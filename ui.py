@@ -10,11 +10,14 @@ except Exception:
     enryptImage = None
 
 KEY_PHRASE = "encryptionkey"
+ALGORITHM_DEFAULT = "AES"
 
 # state for selected image
 selected_image_path: Path | None = None
 selected_image_tk = None
 action_buttons_frame: tk.Frame | None = None
+ALGORITHM_SELECTION: tk.StringVar | None = None
+ALGORITHM_BUTTONS: dict = {}
 
 # try to enable drag-and-drop support (optional)
 try:
@@ -96,10 +99,19 @@ def on_encrypt(canvas: tk.Canvas) -> None:
         encrypted_dir = base_dir / "images" / "encrypted"
         encrypted_dir.mkdir(parents=True, exist_ok=True)
 
-        output_path = encrypted_dir / f"aes_{input_path.name}"
-        nonce_path = encrypted_dir / f"aes_{input_path.stem}.nonce"
+        # Determine algorithm from UI selector if available
+        try:
+            alg = ALGORITHM_SELECTION.get()
+        except Exception:
+            alg = ALGORITHM_DEFAULT
 
-        enryptImage.encrypt_image(input_path, output_path, nonce_path, KEY_PHRASE)
+        prefix = alg.lower()
+        output_path = encrypted_dir / f"{prefix}_encrypted_{input_path.name}"
+        nonce_path = encrypted_dir / f"{prefix}_encrypted_{input_path.stem}.nonce"
+
+        enryptImage.encrypt_image(
+            input_path, output_path, nonce_path, KEY_PHRASE, algorithm=alg
+        )
         # replace displayed image with encrypted output
         try:
             display_image(output_path, canvas)
@@ -132,10 +144,32 @@ def on_decrypt(canvas: tk.Canvas) -> None:
         base_dir = Path(__file__).resolve().parent
         decrypted_dir = base_dir / "images" / "decrypted"
         decrypted_dir.mkdir(parents=True, exist_ok=True)
-        output_name = input_path.name.replace("aes_", "decrypted_", 1)
+        # Decide algorithm from filename prefix if possible
+        stem = input_path.stem
+        if stem.lower().startswith("aes_"):
+            detected_alg = "AES"
+        elif stem.lower().startswith("des_"):
+            detected_alg = "DES"
+        else:
+            try:
+                detected_alg = ALGORITHM_SELECTION.get()
+            except Exception:
+                detected_alg = ALGORITHM_DEFAULT
+
+        output_name = input_path.name
+        if output_name.lower().startswith("aes_") or output_name.lower().startswith(
+            "des_"
+        ):
+            alg = output_name.split("_")[0]
+            image_name = output_name.split("_")[2]
+            output_name = f"{alg}_decrypted_{image_name}"
+        else:
+            output_name = f"decrypted_{output_name}"
         output_path = decrypted_dir / output_name
 
-        enryptImage.decrypt_image(input_path, output_path, nonce_path, KEY_PHRASE)
+        enryptImage.decrypt_image(
+            input_path, output_path, nonce_path, KEY_PHRASE, algorithm=detected_alg
+        )
         # replace displayed image with decrypted output
         try:
             display_image(output_path, canvas)
@@ -185,6 +219,7 @@ def build_image_box(frame) -> None:
 
     return img_box
 
+
 def build_buttons(frame, img_box) -> None:
     choose_btn = tk.Button(
         frame, text="Choose image", command=lambda: choose_image(img_box)
@@ -210,6 +245,38 @@ def build_buttons(frame, img_box) -> None:
     decrypt_btn.pack(side="left", padx=6)
 
 
+def build_algorithm_menu(parent) -> None:
+    """Build vertical algorithm buttons in the left sidebar."""
+    global ALGORITHM_SELECTION, ALGORITHM_BUTTONS
+    ALGORITHM_SELECTION = tk.StringVar(value=ALGORITHM_DEFAULT)
+
+    label = tk.Label(parent, text="Algorithms", font=(None, 10, "bold"))
+    label.pack(pady=(0, 6))
+
+    def make_btn(name: str):
+        btn = tk.Button(parent, text=name, width=12)
+
+        def on_click():
+            set_algorithm(name)
+
+        btn.config(command=on_click)
+        btn.pack(pady=4, fill="x")
+        ALGORITHM_BUTTONS[name] = btn
+
+    make_btn("AES")
+    make_btn("DES")
+
+    # initialize visuals
+    def set_algorithm(name: str):
+        ALGORITHM_SELECTION.set(name)
+        for n, b in ALGORITHM_BUTTONS.items():
+            if n == name:
+                b.config(relief="sunken", bg="#cfe")
+            else:
+                b.config(relief="raised", bg=parent.cget("bg"))
+
+    set_algorithm(ALGORITHM_DEFAULT)
+
 
 def build_ui() -> None:
     # create root (use DnD root if available)
@@ -218,15 +285,24 @@ def build_ui() -> None:
     else:
         root = tk.Tk()
 
-    root.title("Image AES")
+    root.title("Image Encryptor")
     root.minsize(320, 240)
 
     frame = tk.Frame(root, padx=10, pady=10)
     frame.pack(expand=True, fill="both")
 
-    img_box = build_image_box(frame)
+    # Left sidebar for algorithm selection
+    alg_sidebar = tk.Frame(frame)
+    alg_sidebar.pack(side="left", fill="y", padx=(0, 8))
+    build_algorithm_menu(alg_sidebar)
 
-    controls_frame = tk.Frame(frame)
+    # Main content area (image + controls)
+    content = tk.Frame(frame)
+    content.pack(side="left", fill="both", expand=True)
+
+    img_box = build_image_box(content)
+
+    controls_frame = tk.Frame(content)
     controls_frame.pack()
 
     build_buttons(controls_frame, img_box)
