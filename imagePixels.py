@@ -19,6 +19,9 @@ def reconstruct_image(pixel_array: np.ndarray, mode: str, output_path: Path) -> 
 
 
 def main() -> None:
+    #pixels, mode = extract_pixels(Path("images/plain/original.png"))
+    #pixels[0, 0] += 1
+    #reconstruct_image(pixels, mode, Path("images/plain/original2.png"))
     pass
 
 

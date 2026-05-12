@@ -12,10 +12,7 @@ def derive_des_key(key_phrase: str) -> bytes:
 
 
 def des_ctr_transform(pixel_array: np.ndarray, key: bytes, nonce: bytes) -> np.ndarray:
-    """Encrypt or decrypt pixel data with TripleDES-CTR (manual CTR using ECB).
-
-    Always uses TripleDES for the DES option.
-    """
+    """Encrypt or decrypt pixel data with TripleDES-CTR (manual CTR using ECB)."""
 
     flat_pixels = pixel_array.astype(np.uint8).tobytes()
 

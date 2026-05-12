@@ -16,6 +16,7 @@ def encrypt_image(
     """Encrypt image pixels with AES-CTR or DES-CTR and save encrypted image plus nonce file.
 
     algorithm -- case-insensitive string, either 'AES' or 'DES'. Defaults to 'AES'.
+    If a nonce file already exists, it will be reused instead of generating a new one.
     """
 
     pixels, mode = extract_pixels(input_path)
@@ -23,11 +24,25 @@ def encrypt_image(
     match algorithm.upper():
         case "AES":
             key = derive_aes_key(key_phrase)
-            nonce = os.urandom(16)
+            if nonce_path.exists():
+                nonce = nonce_path.read_bytes()
+                if len(nonce) != 16:
+                    raise ValueError(
+                        "Invalid nonce length. Expected 16 bytes for AES-CTR."
+                    )
+            else:
+                nonce = os.urandom(16)
             transformed = aes_ctr_transform(pixels, key, nonce)
         case "DES":
             key = derive_des_key(key_phrase)
-            nonce = os.urandom(8)
+            if nonce_path.exists():
+                nonce = nonce_path.read_bytes()
+                if len(nonce) != 8:
+                    raise ValueError(
+                        "Invalid nonce length. Expected 8 bytes for DES-CTR."
+                    )
+            else:
+                nonce = os.urandom(8)
             transformed = des_ctr_transform(pixels, key, nonce)
         case _:
             raise ValueError(f"Unsupported algorithm: {algorithm}")
