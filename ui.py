@@ -18,6 +18,7 @@ selected_image_tk = None
 action_buttons_frame: tk.Frame | None = None
 ALGORITHM_SELECTION: tk.StringVar | None = None
 ALGORITHM_BUTTONS: dict = {}
+ALGORITHM_BUTTON_VALUES: dict = {}
 
 # try to enable drag-and-drop support (optional)
 try:
@@ -150,6 +151,8 @@ def on_decrypt(canvas: tk.Canvas) -> None:
             detected_alg = "AES"
         elif stem.lower().startswith("des_"):
             detected_alg = "DES"
+        elif stem.lower().startswith("custom_aes_"):
+            detected_alg = "CUSTOM_AES"
         else:
             try:
                 detected_alg = ALGORITHM_SELECTION.get()
@@ -253,24 +256,32 @@ def build_algorithm_menu(parent) -> None:
     label = tk.Label(parent, text="Algorithms", font=(None, 10, "bold"))
     label.pack(pady=(0, 6))
 
-    def make_btn(name: str):
-        btn = tk.Button(parent, text=name, width=12)
+    def make_btn(display_name: str, value: str | None = None):
+        if value is None:
+            value = display_name
+
+        btn = tk.Button(parent, text=display_name, width=12)
 
         def on_click():
-            set_algorithm(name)
+            set_algorithm(display_name, value)
 
         btn.config(command=on_click)
         btn.pack(pady=4, fill="x")
-        ALGORITHM_BUTTONS[name] = btn
+        ALGORITHM_BUTTONS[display_name] = btn
+        ALGORITHM_BUTTON_VALUES[display_name] = value
 
     make_btn("AES")
     make_btn("DES")
+    make_btn("Custom AES", "CUSTOM_AES")
 
     # initialize visuals
-    def set_algorithm(name: str):
-        ALGORITHM_SELECTION.set(name)
+    def set_algorithm(display_name: str, value: str | None = None):
+        if value is None:
+            value = ALGORITHM_BUTTON_VALUES.get(display_name, display_name)
+
+        ALGORITHM_SELECTION.set(value)
         for n, b in ALGORITHM_BUTTONS.items():
-            if n == name:
+            if n == display_name:
                 b.config(relief="sunken", bg="#cfe")
             else:
                 b.config(relief="raised", bg=parent.cget("bg"))
