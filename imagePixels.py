@@ -18,9 +18,23 @@ def reconstruct_image(pixel_array: np.ndarray, mode: str, output_path: Path) -> 
 
 
 def main() -> None:
-    #pixels, mode = extract_pixels(Path("images/plain/original.png"))
-    #pixels[0, 0] += 1
-    #reconstruct_image(pixels, mode, Path("images/plain/original2.png"))
+    pixels, mode = extract_pixels(
+        Path("images/encrypted/aes_cbc_encrypted_original.png")
+    )
+    print(f"Extracted pixels {pixels[0, 0]}")
+    print(f"Extracted pixels {pixels[0, 1]}")
+    print(f"Extracted pixels {pixels[0, 2]}")
+    print(f"Extracted pixels {pixels[0, 3]}")
+    print("-----------------------------------------")
+    pixels, mode = extract_pixels(
+        Path("images/encrypted/aes_cbc_encrypted_original2.png")
+    )
+    print(f"Extracted pixels {pixels[0, 0]}")
+    print(f"Extracted pixels {pixels[0, 1]}")
+    print(f"Extracted pixels {pixels[0, 2]}")
+    print(f"Extracted pixels {pixels[0, 3]}")
+    # pixels[0, 0] += 1
+    # reconstruct_image(pixels, mode, Path("images/plain/original2.png"))
     pass
 
 

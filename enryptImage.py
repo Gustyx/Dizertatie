@@ -3,6 +3,10 @@ from pathlib import Path
 import numpy as np
 
 from aes import aes_ctr_transform, derive_aes_key
+from aes_cbc import (
+    aes_cbc_encrypt_bytes,
+    aes_cbc_decrypt_bytes,
+)
 from custom_aes import apply_custom_aes_decrypt, apply_custom_aes_encrypt
 from des import derive_des_key, des_ctr_transform
 from imagePixels import extract_pixels, reconstruct_image
@@ -62,6 +66,52 @@ def encrypt_image(
 
             # Custom AES does not use a nonce in this implementation; write an empty nonce
             nonce = b""
+        case "AES_CBC":
+            # AES-CBC: store IV in nonce file and full ciphertext in a .cbc file.
+            key = derive_aes_key(key_phrase)
+
+            if nonce_path.exists():
+                iv = nonce_path.read_bytes()
+                if len(iv) != 16:
+                    raise ValueError(
+                        "Invalid IV length. Expected 16 bytes for AES-CBC."
+                    )
+            else:
+                iv = os.urandom(16)
+
+            # Flatten pixels and encrypt bytes
+            flat = pixels.astype(np.uint8).tobytes()
+            encrypted_bytes = aes_cbc_encrypt_bytes(flat, key, iv)
+
+            # Save full ciphertext alongside the image so we can decrypt later
+            ciphertext_path = output_path.with_suffix(".cbc")
+            ciphertext_path.parent.mkdir(parents=True, exist_ok=True)
+            ciphertext_path.write_bytes(encrypted_bytes)
+
+            # Save metadata (shape and mode and original length) for reconstruction on decrypt
+            meta = {
+                "shape": list(pixels.shape),
+                "mode": mode,
+                "length": len(flat),
+            }
+            import json
+
+            meta_path = output_path.with_suffix(".meta")
+            meta_path.write_text(json.dumps(meta))
+
+            # For the displayed/saved image file, write the first N bytes (or pad/truncate)
+            orig_len = len(flat)
+            disp_bytes = (
+                encrypted_bytes[:orig_len]
+                if len(encrypted_bytes) >= orig_len
+                else encrypted_bytes + bytes(orig_len - len(encrypted_bytes))
+            )
+            transformed = np.frombuffer(disp_bytes, dtype=np.uint8).reshape(
+                pixels.shape
+            )
+
+            # nonce file will contain the IV only
+            nonce = iv
         case _:
             raise ValueError(f"Unsupported algorithm: {algorithm}")
 
@@ -98,6 +148,28 @@ def decrypt_image(
             if len(nonce) != 8:
                 raise ValueError("Invalid nonce length. Expected 8 bytes for DES-CTR.")
             transformed = des_ctr_transform(pixels, key, nonce)
+        case "AES_CBC":
+            key = derive_aes_key(key_phrase)
+            iv = nonce_path.read_bytes()
+            if len(iv) != 16:
+                raise ValueError("Invalid IV length. Expected 16 bytes for AES-CBC.")
+
+            ciphertext_path = input_path.with_suffix(".cbc")
+            meta_path = input_path.with_suffix(".meta")
+            if not ciphertext_path.exists():
+                raise FileNotFoundError(f"Ciphertext file not found: {ciphertext_path}")
+            if not meta_path.exists():
+                raise FileNotFoundError(f"Metadata file not found: {meta_path}")
+
+            encrypted_bytes = ciphertext_path.read_bytes()
+            import json
+
+            meta = json.loads(meta_path.read_text())
+            shape = tuple(meta.get("shape", []))
+            mode = meta.get("mode", mode)
+
+            decrypted = aes_cbc_decrypt_bytes(encrypted_bytes, key, iv)
+            transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(shape)
         case "CUSTOM_AES":
             # Use the provided key phrase (padded/truncated to 16 chars) for the custom AES
             key = (key_phrase or "").ljust(16)[:16]

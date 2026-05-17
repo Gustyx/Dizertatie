@@ -95,6 +95,7 @@ def on_encrypt(canvas: tk.Canvas) -> None:
         return
 
     try:
+        print(f"Computing pixel entropy for {selected_image_path}")
         input_path = selected_image_path
         base_dir = Path(__file__).resolve().parent
         encrypted_dir = base_dir / "images" / "encrypted"
@@ -147,7 +148,10 @@ def on_decrypt(canvas: tk.Canvas) -> None:
         decrypted_dir.mkdir(parents=True, exist_ok=True)
         # Decide algorithm from filename prefix if possible
         stem = input_path.stem
-        if stem.lower().startswith("aes_"):
+        if stem.lower().startswith("aes-cbc_") or stem.lower().startswith("aes_cbc_"):
+            detected_alg = "AES_CBC"
+            print("Detected AES-CBC from filename prefix")
+        elif stem.lower().startswith("aes_"):
             detected_alg = "AES"
         elif stem.lower().startswith("des_"):
             detected_alg = "DES"
@@ -160,12 +164,9 @@ def on_decrypt(canvas: tk.Canvas) -> None:
                 detected_alg = ALGORITHM_DEFAULT
 
         output_name = input_path.name
-        if output_name.lower().startswith("aes_") or output_name.lower().startswith(
-            "des_"
-        ):
-            alg = output_name.split("_")[0]
-            image_name = output_name.split("_")[2]
-            output_name = f"{alg}_decrypted_{image_name}"
+        if "_encrypted_" in output_name:
+            alg_prefix, _, image_name = output_name.partition("_encrypted_")
+            output_name = f"{alg_prefix}_decrypted_{image_name}"
         else:
             output_name = f"decrypted_{output_name}"
         output_path = decrypted_dir / output_name
@@ -271,6 +272,7 @@ def build_algorithm_menu(parent) -> None:
         ALGORITHM_BUTTON_VALUES[display_name] = value
 
     make_btn("AES")
+    make_btn("AES-CBC", "AES_CBC")
     make_btn("DES")
     make_btn("Custom AES", "CUSTOM_AES")
 
@@ -318,11 +320,29 @@ def build_ui() -> None:
 
     build_buttons(controls_frame, img_box)
 
+    # Mode switch button to open analysis UI
+    def switch_to_analyse():
+        try:
+            root.destroy()
+        except Exception:
+            pass
+        try:
+            import analyse_ui as analyse_ui
+
+            analyse_ui.build_ui()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open Analyse UI:\n{e}")
+
+    bottom = tk.Frame(frame)
+    bottom.pack(side="bottom", fill="x", pady=(8, 0))
+    switch_btn = tk.Button(bottom, text="Analyse", width=12, command=switch_to_analyse)
+    switch_btn.pack()
+
     root.mainloop()
 
 
 def main() -> None:
-    pass
+    build_ui()
 
 
 if __name__ == "__main__":

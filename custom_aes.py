@@ -277,37 +277,37 @@ def encrypt_pixels(pixels: List[int], round_keys) -> List[int]:
     round_number = 0
     pixel_block = []
 
-    for i in range(0, len(pixels)):
-        if (i + 1) % 4 != 0:
-            pixel_block.append(pixels[i])
+    # for i in range(0, len(pixels)):
+    #     if (i + 1) % 4 != 0:
+    #         pixel_block.append(pixels[i])
 
-        if len(pixel_block) == 16:
-            encrypted_block = aes_encrypt(pixel_block, round_keys, round_number)
+    #     if len(pixel_block) == 16:
+    #         encrypted_block = aes_encrypt(pixel_block, round_keys, round_number)
 
-            for j in range(16):
-                encrypted_pixels.append(encrypted_block[j])
+    #         for j in range(16):
+    #             encrypted_pixels.append(encrypted_block[j])
 
-                if (len(encrypted_pixels) + 1) % 4 == 0:
-                    encrypted_pixels.append(255)
+    #             if (len(encrypted_pixels) + 1) % 4 == 0:
+    #                 encrypted_pixels.append(255)
 
-            pixel_block = []
-            round_number = (round_number + 1) % 11
+    #         pixel_block = []
+    #         round_number = (round_number + 1) % 11
 
-    for i in range(len(pixel_block)):
-        encrypted_pixels.append(pixel_block[i])
-        if (len(encrypted_pixels) + 1) % 4 == 0:
-            encrypted_pixels.append(255)
+    # for i in range(len(pixel_block)):
+    #     encrypted_pixels.append(pixel_block[i])
+    #     if (len(encrypted_pixels) + 1) % 4 == 0:
+    #         encrypted_pixels.append(255)
 
-    #for start in range(0, len(pixels), 16):
-        #pixel_block = pixels[start:start + 16]
+    for start in range(0, len(pixels), 16):
+        pixel_block = pixels[start:start + 16]
 
-        #if len(pixel_block) < 16:
-            #pixel_block = pixel_block + [0] * (16 - len(pixel_block))
+        if len(pixel_block) < 16:
+            pixel_block = pixel_block + [0] * (16 - len(pixel_block))
 
-        #encrypted_block = aes_encrypt(pixel_block, round_keys, round_number)
-        #encrypted_pixels.extend(encrypted_block[: len(pixels[start:start + 16])])
+        encrypted_block = aes_encrypt(pixel_block, round_keys, round_number)
+        encrypted_pixels.extend(encrypted_block[: len(pixels[start:start + 16])])
 
-        #round_number = (round_number + 1) % 11
+        round_number = (round_number + 1) % 11
 
     return encrypted_pixels
 
@@ -317,37 +317,37 @@ def decrypt_pixels(pixels: List[int], round_keys) -> List[int]:
     round_number = 0
     pixel_block = []
 
-    for i in range(0, len(pixels)):
-        if (i + 1) % 4 != 0:
-            pixel_block.append(pixels[i])
+    # for i in range(0, len(pixels)):
+    #     if (i + 1) % 4 != 0:
+    #         pixel_block.append(pixels[i])
 
-        if len(pixel_block) == 16:
-            decrypted_block = aes_decrypt(pixel_block, round_keys, round_number)
+    #     if len(pixel_block) == 16:
+    #         decrypted_block = aes_decrypt(pixel_block, round_keys, round_number)
 
-            for j in range(16):
-                decrypted_pixels.append(decrypted_block[j])
+    #         for j in range(16):
+    #             decrypted_pixels.append(decrypted_block[j])
 
-                if (len(decrypted_pixels) + 1) % 4 == 0:
-                    decrypted_pixels.append(255)
+    #             if (len(decrypted_pixels) + 1) % 4 == 0:
+    #                 decrypted_pixels.append(255)
 
-            pixel_block = []
-            round_number = (round_number + 1) % 11
+    #         pixel_block = []
+    #         round_number = (round_number + 1) % 11
 
-    for i in range(len(pixel_block)):
-        decrypted_pixels.append(pixel_block[i])
-        if (len(decrypted_pixels) + 1) % 4 == 0:
-            decrypted_pixels.append(255)
+    # for i in range(len(pixel_block)):
+    #     decrypted_pixels.append(pixel_block[i])
+    #     if (len(decrypted_pixels) + 1) % 4 == 0:
+    #         decrypted_pixels.append(255)
 
-    #for start in range(0, len(pixels), 16):
-        #pixel_block = pixels[start:start + 16]
+    for start in range(0, len(pixels), 16):
+        pixel_block = pixels[start:start + 16]
 
-        #if len(pixel_block) < 16:
-            #pixel_block = pixel_block + [0] * (16 - len(pixel_block))
+        if len(pixel_block) < 16:
+            pixel_block = pixel_block + [0] * (16 - len(pixel_block))
 
-        #decrypted_block = aes_decrypt(pixel_block, round_keys, round_number)
-        #decrypted_pixels.extend(decrypted_block[: len(pixels[start:start + 16])])
+        decrypted_block = aes_decrypt(pixel_block, round_keys, round_number)
+        decrypted_pixels.extend(decrypted_block[: len(pixels[start:start + 16])])
 
-        #round_number = (round_number + 1) % 11
+        round_number = (round_number + 1) % 11
 
     return decrypted_pixels
 
