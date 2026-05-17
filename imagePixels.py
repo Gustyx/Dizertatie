@@ -17,9 +17,15 @@ def reconstruct_image(pixel_array: np.ndarray, mode: str, output_path: Path) -> 
     image.save(output_path)
 
 
+def add_one_bit_to_pixel(image_path: Path) -> None:
+    pixels, mode = extract_pixels(image_path)
+    pixels[0, 0] += 1
+    reconstruct_image(pixels, mode, Path("images/plain/original2.png"))
+
+
 def main() -> None:
     pixels, mode = extract_pixels(
-        Path("images/encrypted/aes_cbc_encrypted_original.png")
+        Path("images/encrypted/chacha20_encrypted_original.png")
     )
     print(f"Extracted pixels {pixels[0, 0]}")
     print(f"Extracted pixels {pixels[0, 1]}")
@@ -27,7 +33,7 @@ def main() -> None:
     print(f"Extracted pixels {pixels[0, 3]}")
     print("-----------------------------------------")
     pixels, mode = extract_pixels(
-        Path("images/encrypted/aes_cbc_encrypted_original2.png")
+        Path("images/encrypted/chacha20_encrypted_original2.png")
     )
     print(f"Extracted pixels {pixels[0, 0]}")
     print(f"Extracted pixels {pixels[0, 1]}")

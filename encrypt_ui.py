@@ -10,7 +10,7 @@ except Exception:
     enryptImage = None
 
 KEY_PHRASE = "encryptionkey"
-ALGORITHM_DEFAULT = "AES"
+ALGORITHM_DEFAULT = "AES_CTR"
 
 # state for selected image
 selected_image_path: Path | None = None
@@ -95,7 +95,6 @@ def on_encrypt(canvas: tk.Canvas) -> None:
         return
 
     try:
-        print(f"Computing pixel entropy for {selected_image_path}")
         input_path = selected_image_path
         base_dir = Path(__file__).resolve().parent
         encrypted_dir = base_dir / "images" / "encrypted"
@@ -108,8 +107,8 @@ def on_encrypt(canvas: tk.Canvas) -> None:
             alg = ALGORITHM_DEFAULT
 
         prefix = alg.lower()
-        output_path = encrypted_dir / f"{prefix}_encrypted_{input_path.name}"
-        nonce_path = encrypted_dir / f"{prefix}_encrypted_{input_path.stem}.nonce"
+        output_path = encrypted_dir / f"{prefix}_enc_{input_path.stem}1{input_path.suffix}"
+        nonce_path = encrypted_dir / f"{prefix}_enc_{input_path.stem}1.nonce"
 
         enryptImage.encrypt_image(
             input_path, output_path, nonce_path, KEY_PHRASE, algorithm=alg
@@ -151,11 +150,22 @@ def on_decrypt(canvas: tk.Canvas) -> None:
         if stem.lower().startswith("aes-cbc_") or stem.lower().startswith("aes_cbc_"):
             detected_alg = "AES_CBC"
             print("Detected AES-CBC from filename prefix")
-        elif stem.lower().startswith("aes_"):
-            detected_alg = "AES"
+        elif stem.lower().startswith("aes-gcm_") or stem.lower().startswith("aes_gcm_"):
+            detected_alg = "AES_GCM"
+            print("Detected AES-GCM from filename prefix")
+        elif stem.lower().startswith("chacha20_") or stem.lower().startswith("chacha_"):
+            detected_alg = "CHACHA20"
+            print("Detected ChaCha20 from filename prefix")
+        elif stem.lower().startswith("aes-ccm_") or stem.lower().startswith("aes_ccm_"):
+            detected_alg = "AES_CCM"
+            print("Detected AES-CCM from filename prefix")
+        elif stem.lower().startswith("aes-ctr_") or stem.lower().startswith("aes_ctr_"):
+            detected_alg = "AES_CTR"
         elif stem.lower().startswith("des_"):
             detected_alg = "DES"
-        elif stem.lower().startswith("custom_aes_"):
+        elif stem.lower().startswith("custom-aes_") or stem.lower().startswith(
+            "custom_aes_"
+        ):
             detected_alg = "CUSTOM_AES"
         else:
             try:
@@ -164,11 +174,11 @@ def on_decrypt(canvas: tk.Canvas) -> None:
                 detected_alg = ALGORITHM_DEFAULT
 
         output_name = input_path.name
-        if "_encrypted_" in output_name:
-            alg_prefix, _, image_name = output_name.partition("_encrypted_")
-            output_name = f"{alg_prefix}_decrypted_{image_name}"
+        if "_enc_" in output_name:
+            alg_prefix, _, image_name = output_name.partition("_enc_")
+            output_name = f"{alg_prefix}_dec_{image_name}"
         else:
-            output_name = f"decrypted_{output_name}"
+            output_name = f"dec_{output_name}"
         output_path = decrypted_dir / output_name
 
         enryptImage.decrypt_image(
@@ -271,10 +281,14 @@ def build_algorithm_menu(parent) -> None:
         ALGORITHM_BUTTONS[display_name] = btn
         ALGORITHM_BUTTON_VALUES[display_name] = value
 
-    make_btn("AES")
+    make_btn("AES-CTR", "AES_CTR")
     make_btn("AES-CBC", "AES_CBC")
+    make_btn("AES-GCM", "AES_GCM")
+    make_btn("AES-CCM", "AES_CCM")
     make_btn("DES")
     make_btn("Custom AES", "CUSTOM_AES")
+
+    make_btn("ChaCha20", "CHACHA20")
 
     # initialize visuals
     def set_algorithm(display_name: str, value: str | None = None):
