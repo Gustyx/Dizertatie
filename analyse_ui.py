@@ -110,24 +110,6 @@ def on_drop(event, canvas: tk.Canvas) -> None:
         return
 
 
-def infer_plain_image_path(encrypted_path: Path) -> Path:
-    base_dir = Path(__file__).resolve().parent
-    plain_dir = base_dir / "images" / "plain"
-    marker = "_encrypted_"
-    if marker not in encrypted_path.stem:
-        raise ValueError(
-            "Expected an encrypted image named like <algorithm>_encrypted_<image>."
-        )
-
-    original_name = encrypted_path.stem.split(marker, 1)[1] + encrypted_path.suffix
-    candidate = plain_dir / original_name
-    if candidate.exists():
-        return candidate
-    raise FileNotFoundError(
-        f"Could not find the matching plain image in {plain_dir}: {original_name}"
-    )
-
-
 def format_result(title: str, result: dict, percent: bool = False) -> str:
     suffix = " %" if percent else ""
     lines = [title]
@@ -172,19 +154,19 @@ def on_analyse() -> None:
             result = pixel_entropy(arr)
             text = format_result("Entropy results", result, percent=False)
         else:
-            plain_path = infer_plain_image_path(encrypted_path)
+            encrypted_plus_one_bit_path = encrypted_path.parent.parent / "encrypted_plus_one_bit" /  f"{encrypted_path.name}"
             # Some analysis functions expect path strings or numpy arrays,
             # not Path objects. Convert to strings for compatibility.
-            p_str = str(plain_path)
             e_str = str(encrypted_path)
+            eb_str = str(encrypted_plus_one_bit_path)
             if metric == "NPCR":
-                result = number_of_pixel_change_rate(p_str, e_str)
+                result = number_of_pixel_change_rate(e_str, eb_str)
                 text = format_result("NPCR results", result, percent=True)
             elif metric == "UACI":
-                result = unified_average_changing_intensity(p_str, e_str)
+                result = unified_average_changing_intensity(e_str, eb_str)
                 text = format_result("UACI results", result, percent=True)
             elif metric == "Correlation":
-                result = correlation_between_images(p_str, e_str)
+                result = correlation_between_images(e_str, eb_str)
                 text = format_result("Correlation results", result, percent=False)
             else:
                 raise ValueError(f"Unsupported analysis metric: {metric}")

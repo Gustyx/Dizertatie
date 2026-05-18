@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 import numpy as np
 
@@ -18,18 +19,109 @@ from aes_ccm import (
 from chacha20 import (
     chacha20_encrypt_bytes,
     chacha20_decrypt_bytes,
-    chacha20_encrypt_array,
-    chacha20_decrypt_array,
 )
 from custom_aes import apply_custom_aes_decrypt, apply_custom_aes_encrypt
 from des import derive_des_key, des_ctr_transform
 from imagePixels import extract_pixels, reconstruct_image
 
+_CIPHERTEXT_SUFFIXES: dict[str, str] = {
+    "AES_CBC": ".cbc",
+    "AES_GCM": ".gcm",
+    "AES_CCM": ".ccm",
+    "CHACHA20": ".chacha",
+}
+
+_ROOT_DIR = Path(__file__).resolve().parent
+_META_DIR = _ROOT_DIR / "meta_files"
+_NONCE_DIR = _ROOT_DIR / "nonce_files"
+
+
+def _meta_path_for_image_path(image_path: Path) -> Path:
+    # Keep metadata in a single folder while preserving a unique, reversible name.
+    meta_name = f"{image_path.stem}.meta"
+    return _META_DIR / meta_name
+
+
+def _nonce_path_for_image_path(image_path: Path) -> Path:
+    # Keep nonce files in a single folder while preserving a unique, reversible name.
+    nonce_name = f"{image_path.stem}.nonce"
+    return _NONCE_DIR / nonce_name
+
+
+def _read_or_create_nonce(
+    output_path: Path,
+    expected_lengths: tuple[int, ...],
+    default_length: int,
+    label: str,
+) -> bytes:
+    nonce_path = _nonce_path_for_image_path(output_path)
+    print(f"Using nonce path: {nonce_path}")
+    if nonce_path.exists():
+        nonce = nonce_path.read_bytes()
+        if len(nonce) not in expected_lengths:
+            expected = " or ".join(str(length) for length in expected_lengths)
+            raise ValueError(f"Invalid {label} length. Expected {expected} bytes.")
+        return nonce
+
+    nonce = os.urandom(default_length)
+    nonce_path.parent.mkdir(parents=True, exist_ok=True)
+    nonce_path.write_bytes(nonce)
+    return nonce
+
+
+def _write_ciphertext_and_meta(
+    output_path: Path,
+    ciphertext_suffix: str,
+    encrypted_bytes: bytes,
+    pixels: np.ndarray,
+    mode: str,
+    original_length: int,
+) -> None:
+    ciphertext_path = output_path.with_suffix(ciphertext_suffix)
+    ciphertext_path.parent.mkdir(parents=True, exist_ok=True)
+    ciphertext_path.write_bytes(encrypted_bytes)
+
+    meta = {
+        "shape": list(pixels.shape),
+        "mode": mode,
+        "length": original_length,
+    }
+    _META_DIR.mkdir(parents=True, exist_ok=True)
+    meta_path = _meta_path_for_image_path(output_path)
+    meta_path.write_text(json.dumps(meta))
+
+
+def _load_ciphertext_and_meta(
+    input_path: Path, ciphertext_suffix: str
+) -> tuple[bytes, tuple[int, ...], str]:
+    ciphertext_path = input_path.with_suffix(ciphertext_suffix)
+    meta_path = _meta_path_for_image_path(input_path)
+    legacy_meta_path = input_path.with_suffix(".meta")
+    if not ciphertext_path.exists():
+        raise FileNotFoundError(f"Ciphertext file not found: {ciphertext_path}")
+    if not meta_path.exists() and legacy_meta_path.exists():
+        meta_path = legacy_meta_path
+    if not meta_path.exists():
+        raise FileNotFoundError(f"Metadata file not found: {meta_path}")
+
+    encrypted_bytes = ciphertext_path.read_bytes()
+    meta = json.loads(meta_path.read_text())
+    shape = tuple(meta.get("shape", []))
+    mode = meta.get("mode")
+    return encrypted_bytes, shape, mode
+
+
+def _display_bytes(encrypted_bytes: bytes, original_length: int) -> bytes:
+    return (
+        encrypted_bytes[:original_length]
+        if len(encrypted_bytes) >= original_length
+        else encrypted_bytes + bytes(original_length - len(encrypted_bytes))
+    )
+
 
 def encrypt_image(
     input_path: Path,
     output_path: Path,
-    nonce_path: Path,
     key_phrase: str,
     algorithm: str = "AES_CTR",
 ) -> None:
@@ -40,29 +132,16 @@ def encrypt_image(
     """
 
     pixels, mode = extract_pixels(input_path)
+    flat = pixels.astype(np.uint8).tobytes()
 
     match algorithm.upper():
         case "AES_CTR":
             key = derive_aes_key(key_phrase)
-            if nonce_path.exists():
-                nonce = nonce_path.read_bytes()
-                if len(nonce) != 16:
-                    raise ValueError(
-                        "Invalid nonce length. Expected 16 bytes for AES-CTR."
-                    )
-            else:
-                nonce = os.urandom(16)
+            nonce = _read_or_create_nonce(output_path, (16,), 16, "nonce")
             transformed = aes_ctr_transform(pixels, key, nonce)
         case "DES":
             key = derive_des_key(key_phrase)
-            if nonce_path.exists():
-                nonce = nonce_path.read_bytes()
-                if len(nonce) != 8:
-                    raise ValueError(
-                        "Invalid nonce length. Expected 8 bytes for DES-CTR."
-                    )
-            else:
-                nonce = os.urandom(8)
+            nonce = _read_or_create_nonce(output_path, (8,), 8, "nonce")
             transformed = des_ctr_transform(pixels, key, nonce)
         case "CUSTOM_AES":
             # Use the provided key phrase (padded/truncated to 16 chars) for the custom AES
@@ -84,42 +163,17 @@ def encrypt_image(
             # AES-CBC: store IV in nonce file and full ciphertext in a .cbc file.
             key = derive_aes_key(key_phrase)
 
-            if nonce_path.exists():
-                iv = nonce_path.read_bytes()
-                if len(iv) != 16:
-                    raise ValueError(
-                        "Invalid IV length. Expected 16 bytes for AES-CBC."
-                    )
-            else:
-                iv = os.urandom(16)
+            iv = _read_or_create_nonce(output_path, (16,), 16, "IV")
 
             # Flatten pixels and encrypt bytes
-            flat = pixels.astype(np.uint8).tobytes()
             encrypted_bytes = aes_cbc_encrypt_bytes(flat, key, iv)
-
-            # Save full ciphertext alongside the image so we can decrypt later
-            ciphertext_path = output_path.with_suffix(".cbc")
-            ciphertext_path.parent.mkdir(parents=True, exist_ok=True)
-            ciphertext_path.write_bytes(encrypted_bytes)
-
-            # Save metadata (shape and mode and original length) for reconstruction on decrypt
-            meta = {
-                "shape": list(pixels.shape),
-                "mode": mode,
-                "length": len(flat),
-            }
-            import json
-
-            meta_path = output_path.with_suffix(".meta")
-            meta_path.write_text(json.dumps(meta))
+            print(output_path)
+            _write_ciphertext_and_meta(
+                output_path, ".cbc", encrypted_bytes, pixels, mode, len(flat)
+            )
 
             # For the displayed/saved image file, write the first N bytes (or pad/truncate)
-            orig_len = len(flat)
-            disp_bytes = (
-                encrypted_bytes[:orig_len]
-                if len(encrypted_bytes) >= orig_len
-                else encrypted_bytes + bytes(orig_len - len(encrypted_bytes))
-            )
+            disp_bytes = _display_bytes(encrypted_bytes, len(flat))
             transformed = np.frombuffer(disp_bytes, dtype=np.uint8).reshape(
                 pixels.shape
             )
@@ -131,39 +185,15 @@ def encrypt_image(
             # AES-GCM: store nonce in nonce file and full ciphertext in a .gcm file.
             key = derive_aes_key(key_phrase)
 
-            if nonce_path.exists():
-                nonce = nonce_path.read_bytes()
-                if len(nonce) not in (12, 16):
-                    # prefer 12-byte nonces, but accept other lengths
-                    raise ValueError(
-                        "Invalid nonce length. Expected 12 bytes for AES-GCM."
-                    )
-            else:
-                nonce = os.urandom(12)
+            nonce = _read_or_create_nonce(output_path, (12, 16), 12, "nonce")
 
-            flat = pixels.astype(np.uint8).tobytes()
             encrypted_bytes = aes_gcm_encrypt_bytes(flat, key, nonce)
 
-            ciphertext_path = output_path.with_suffix(".gcm")
-            ciphertext_path.parent.mkdir(parents=True, exist_ok=True)
-            ciphertext_path.write_bytes(encrypted_bytes)
-
-            meta = {
-                "shape": list(pixels.shape),
-                "mode": mode,
-                "length": len(flat),
-            }
-            import json
-
-            meta_path = output_path.with_suffix(".meta")
-            meta_path.write_text(json.dumps(meta))
-
-            orig_len = len(flat)
-            disp_bytes = (
-                encrypted_bytes[:orig_len]
-                if len(encrypted_bytes) >= orig_len
-                else encrypted_bytes + bytes(orig_len - len(encrypted_bytes))
+            _write_ciphertext_and_meta(
+                output_path, ".gcm", encrypted_bytes, pixels, mode, len(flat)
             )
+
+            disp_bytes = _display_bytes(encrypted_bytes, len(flat))
             transformed = np.frombuffer(disp_bytes, dtype=np.uint8).reshape(
                 pixels.shape
             )
@@ -171,57 +201,25 @@ def encrypt_image(
             # AES-CCM: store nonce in nonce file and full ciphertext in a .ccm file.
             key = derive_aes_key(key_phrase)
 
-            if nonce_path.exists():
-                nonce = nonce_path.read_bytes()
-                if not (7 <= len(nonce) <= 13):
-                    raise ValueError(
-                        "Invalid nonce length. Expected 7..13 bytes for AES-CCM."
-                    )
-            else:
-                # Use an 11-byte nonce by default so AES-CCM can support large images
-                # (q = 15 - nonce_len = 4 -> max message ~ 2^(8*4)-1 = ~4GB)
-                nonce = os.urandom(11)
-
-            flat = pixels.astype(np.uint8).tobytes()
+            nonce = _read_or_create_nonce(output_path, tuple(range(7, 14)), 11, "nonce")
 
             # Check AES-CCM message length capacity for the nonce length.
             # q = 15 - nonce_len; max_size = 2^(8*q)-1
             q = 15 - len(nonce)
             max_size = (1 << (8 * q)) - 1
             if len(flat) > max_size:
-                if nonce_path.exists():
-                    raise ValueError(
-                        f"Image too large for existing AES-CCM nonce (len={len(nonce)}). "
-                        f"Max message size for this nonce is {max_size} bytes; image is {len(flat)} bytes. "
-                        "Delete the .nonce file to regenerate a larger-capacity nonce."
-                    )
-                else:
-                    raise ValueError(
-                        f"Image too large for generated AES-CCM nonce (len={len(nonce)}). "
-                        f"Max message size is {max_size} bytes; image is {len(flat)} bytes."
-                    )
+                raise ValueError(
+                    f"Image too large for existing AES-CCM nonce (len={len(nonce)}). "
+                    f"Max message size for this nonce is {max_size} bytes; image is {len(flat)} bytes. "
+                    "Delete the .nonce file to regenerate a larger-capacity nonce."
+                )
             encrypted_bytes = aes_ccm_encrypt_bytes(flat, key, nonce)
 
-            ciphertext_path = output_path.with_suffix(".ccm")
-            ciphertext_path.parent.mkdir(parents=True, exist_ok=True)
-            ciphertext_path.write_bytes(encrypted_bytes)
-
-            meta = {
-                "shape": list(pixels.shape),
-                "mode": mode,
-                "length": len(flat),
-            }
-            import json
-
-            meta_path = output_path.with_suffix(".meta")
-            meta_path.write_text(json.dumps(meta))
-
-            orig_len = len(flat)
-            disp_bytes = (
-                encrypted_bytes[:orig_len]
-                if len(encrypted_bytes) >= orig_len
-                else encrypted_bytes + bytes(orig_len - len(encrypted_bytes))
+            _write_ciphertext_and_meta(
+                output_path, ".ccm", encrypted_bytes, pixels, mode, len(flat)
             )
+
+            disp_bytes = _display_bytes(encrypted_bytes, len(flat))
             transformed = np.frombuffer(disp_bytes, dtype=np.uint8).reshape(
                 pixels.shape
             )
@@ -229,38 +227,15 @@ def encrypt_image(
             # ChaCha20 stream cipher (no auth). Store full ciphertext in .chacha file
             key = derive_aes_key(key_phrase)
 
-            if nonce_path.exists():
-                nonce = nonce_path.read_bytes()
-                if len(nonce) != 16:
-                    raise ValueError(
-                        "Invalid nonce length. Expected 16 bytes for ChaCha20."
-                    )
-            else:
-                nonce = os.urandom(16)
+            nonce = _read_or_create_nonce(output_path, (16,), 16, "nonce")
 
-            flat = pixels.astype(np.uint8).tobytes()
             encrypted_bytes = chacha20_encrypt_bytes(flat, key, nonce)
 
-            ciphertext_path = output_path.with_suffix(".chacha")
-            ciphertext_path.parent.mkdir(parents=True, exist_ok=True)
-            ciphertext_path.write_bytes(encrypted_bytes)
-
-            meta = {
-                "shape": list(pixels.shape),
-                "mode": mode,
-                "length": len(flat),
-            }
-            import json
-
-            meta_path = output_path.with_suffix(".meta")
-            meta_path.write_text(json.dumps(meta))
-
-            orig_len = len(flat)
-            disp_bytes = (
-                encrypted_bytes[:orig_len]
-                if len(encrypted_bytes) >= orig_len
-                else encrypted_bytes + bytes(orig_len - len(encrypted_bytes))
+            _write_ciphertext_and_meta(
+                output_path, ".chacha", encrypted_bytes, pixels, mode, len(flat)
             )
+
+            disp_bytes = _display_bytes(encrypted_bytes, len(flat))
             transformed = np.frombuffer(disp_bytes, dtype=np.uint8).reshape(
                 pixels.shape
             )
@@ -269,21 +244,18 @@ def encrypt_image(
 
     reconstruct_image(transformed, mode, output_path)
 
-    nonce_path.parent.mkdir(parents=True, exist_ok=True)
-    nonce_path.write_bytes(nonce)
-
 
 def decrypt_image(
     input_path: Path,
     output_path: Path,
-    nonce_path: Path,
     key_phrase: str,
     algorithm: str = "AES_CTR",
 ) -> None:
     """Decrypt AES-CTR or DES-CTR encrypted image pixels using the stored nonce file."""
 
-    if not nonce_path.exists():
-        raise FileNotFoundError(f"Nonce file not found: {nonce_path}")
+    nonce_path = _nonce_path_for_image_path(input_path)
+    # if not nonce_path.exists():
+    # raise FileNotFoundError(f"Nonce file not found: {nonce_path}")
 
     pixels, mode = extract_pixels(input_path)
 
@@ -291,6 +263,7 @@ def decrypt_image(
         case "AES_CTR":
             key = derive_aes_key(key_phrase)
             nonce = nonce_path.read_bytes()
+            print(nonce_path)
             if len(nonce) != 16:
                 raise ValueError("Invalid nonce length. Expected 16 bytes for AES-CTR.")
             transformed = aes_ctr_transform(pixels, key, nonce)
@@ -306,19 +279,10 @@ def decrypt_image(
             if len(iv) != 16:
                 raise ValueError("Invalid IV length. Expected 16 bytes for AES-CBC.")
 
-            ciphertext_path = input_path.with_suffix(".cbc")
-            meta_path = input_path.with_suffix(".meta")
-            if not ciphertext_path.exists():
-                raise FileNotFoundError(f"Ciphertext file not found: {ciphertext_path}")
-            if not meta_path.exists():
-                raise FileNotFoundError(f"Metadata file not found: {meta_path}")
-
-            encrypted_bytes = ciphertext_path.read_bytes()
-            import json
-
-            meta = json.loads(meta_path.read_text())
-            shape = tuple(meta.get("shape", []))
-            mode = meta.get("mode", mode)
+            encrypted_bytes, shape, loaded_mode = _load_ciphertext_and_meta(
+                input_path, ".cbc"
+            )
+            mode = loaded_mode or mode
 
             decrypted = aes_cbc_decrypt_bytes(encrypted_bytes, key, iv)
             transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(shape)
@@ -328,19 +292,10 @@ def decrypt_image(
             if len(nonce) not in (12, 16):
                 raise ValueError("Invalid nonce length. Expected 12 bytes for AES-GCM.")
 
-            ciphertext_path = input_path.with_suffix(".gcm")
-            meta_path = input_path.with_suffix(".meta")
-            if not ciphertext_path.exists():
-                raise FileNotFoundError(f"Ciphertext file not found: {ciphertext_path}")
-            if not meta_path.exists():
-                raise FileNotFoundError(f"Metadata file not found: {meta_path}")
-
-            encrypted_bytes = ciphertext_path.read_bytes()
-            import json
-
-            meta = json.loads(meta_path.read_text())
-            shape = tuple(meta.get("shape", []))
-            mode = meta.get("mode", mode)
+            encrypted_bytes, shape, loaded_mode = _load_ciphertext_and_meta(
+                input_path, ".gcm"
+            )
+            mode = loaded_mode or mode
 
             decrypted = aes_gcm_decrypt_bytes(encrypted_bytes, key, nonce)
             transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(shape)
@@ -352,19 +307,10 @@ def decrypt_image(
                     "Invalid nonce length. Expected 7..13 bytes for AES-CCM."
                 )
 
-            ciphertext_path = input_path.with_suffix(".ccm")
-            meta_path = input_path.with_suffix(".meta")
-            if not ciphertext_path.exists():
-                raise FileNotFoundError(f"Ciphertext file not found: {ciphertext_path}")
-            if not meta_path.exists():
-                raise FileNotFoundError(f"Metadata file not found: {meta_path}")
-
-            encrypted_bytes = ciphertext_path.read_bytes()
-            import json
-
-            meta = json.loads(meta_path.read_text())
-            shape = tuple(meta.get("shape", []))
-            mode = meta.get("mode", mode)
+            encrypted_bytes, shape, loaded_mode = _load_ciphertext_and_meta(
+                input_path, ".ccm"
+            )
+            mode = loaded_mode or mode
 
             decrypted = aes_ccm_decrypt_bytes(encrypted_bytes, key, nonce)
             transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(shape)
@@ -376,19 +322,10 @@ def decrypt_image(
                     "Invalid nonce length. Expected 16 bytes for ChaCha20."
                 )
 
-            ciphertext_path = input_path.with_suffix(".chacha")
-            meta_path = input_path.with_suffix(".meta")
-            if not ciphertext_path.exists():
-                raise FileNotFoundError(f"Ciphertext file not found: {ciphertext_path}")
-            if not meta_path.exists():
-                raise FileNotFoundError(f"Metadata file not found: {meta_path}")
-
-            encrypted_bytes = ciphertext_path.read_bytes()
-            import json
-
-            meta = json.loads(meta_path.read_text())
-            shape = tuple(meta.get("shape", []))
-            mode = meta.get("mode", mode)
+            encrypted_bytes, shape, loaded_mode = _load_ciphertext_and_meta(
+                input_path, ".chacha"
+            )
+            mode = loaded_mode or mode
 
             decrypted = chacha20_decrypt_bytes(encrypted_bytes, key, nonce)
             transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(shape)

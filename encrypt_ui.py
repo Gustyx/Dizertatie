@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 
+from imagePixels import add_one_bit_to_pixel
+
 try:
     import enryptImage
 except Exception:
@@ -99,6 +101,10 @@ def on_encrypt(canvas: tk.Canvas) -> None:
         base_dir = Path(__file__).resolve().parent
         encrypted_dir = base_dir / "images" / "encrypted"
         encrypted_dir.mkdir(parents=True, exist_ok=True)
+        encrypted_plus_one_bit_dir = base_dir / "images" / "encrypted_plus_one_bit"
+        encrypted_plus_one_bit_dir.mkdir(parents=True, exist_ok=True)
+        nonce_dir = base_dir / "nonce_files"
+        nonce_dir.mkdir(parents=True, exist_ok=True)
 
         # Determine algorithm from UI selector if available
         try:
@@ -107,21 +113,23 @@ def on_encrypt(canvas: tk.Canvas) -> None:
             alg = ALGORITHM_DEFAULT
 
         prefix = alg.lower()
-        output_path = encrypted_dir / f"{prefix}_enc_{input_path.stem}1{input_path.suffix}"
-        nonce_path = encrypted_dir / f"{prefix}_enc_{input_path.stem}1.nonce"
-
+        output_path = encrypted_dir / f"{prefix}_enc_{input_path.name}"
+        
         enryptImage.encrypt_image(
-            input_path, output_path, nonce_path, KEY_PHRASE, algorithm=alg
+            input_path, output_path, KEY_PHRASE, algorithm=alg
+        )
+
+        input_path_2 = add_one_bit_to_pixel(input_path)
+        output_path_2 = encrypted_plus_one_bit_dir / f"{prefix}_enc_{input_path.name}"
+        
+        enryptImage.encrypt_image(
+            input_path_2, output_path_2, KEY_PHRASE, algorithm=alg
         )
         # replace displayed image with encrypted output
         try:
             display_image(output_path, canvas)
         except Exception:
             pass
-        messagebox.showinfo(
-            "Encrypted",
-            f"Encrypted saved:\n{output_path}\nNonce:\n{nonce_path}",
-        )
     except Exception as exc:
         messagebox.showerror(
             "Error", f"Encryption failed:\n{exc}\n\n{traceback.format_exc()}"
@@ -139,8 +147,6 @@ def on_decrypt(canvas: tk.Canvas) -> None:
 
     try:
         input_path = selected_image_path
-        encrypted_dir = input_path.parent
-        nonce_path = encrypted_dir / f"{input_path.stem}.nonce"
 
         base_dir = Path(__file__).resolve().parent
         decrypted_dir = base_dir / "images" / "decrypted"
@@ -182,14 +188,13 @@ def on_decrypt(canvas: tk.Canvas) -> None:
         output_path = decrypted_dir / output_name
 
         enryptImage.decrypt_image(
-            input_path, output_path, nonce_path, KEY_PHRASE, algorithm=detected_alg
+            input_path, output_path, KEY_PHRASE, algorithm=detected_alg
         )
         # replace displayed image with decrypted output
         try:
             display_image(output_path, canvas)
         except Exception:
             pass
-        messagebox.showinfo("Decrypted", f"Decrypted saved:\n{output_path}")
     except Exception as exc:
         messagebox.showerror(
             "Error", f"Decryption failed:\n{exc}\n\n{traceback.format_exc()}"
