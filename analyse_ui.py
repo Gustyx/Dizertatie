@@ -8,6 +8,7 @@ import numpy as np
 
 from correlation import correlation_between_images
 from entropy import pixel_entropy
+from histogram import image_histogram
 from nprc import number_of_pixel_change_rate
 from uaci import unified_average_changing_intensity
 
@@ -131,6 +132,54 @@ def format_result(title: str, result: dict, percent: bool = False) -> str:
     return "\n".join(lines)
 
 
+def format_histogram_result(title: str, result: dict) -> str:
+    lines = [title]
+
+    if "per_channel" in result:
+        lines.append("Per channel:")
+        for channel, summary in result["per_channel"].items():
+            lines.append(
+                f"  {channel}: peak {summary['peak_intensity']} ({summary['peak_count']} pixels, {summary['peak_percentage']:.2f}% of {summary['total_pixels']})"
+            )
+            lines.append(f"    non-zero bins: {summary['non_zero_bins']}")
+            lines.append(f"    mean intensity: {summary['mean_intensity']:.6f}")
+            # chi-square
+            chi_p = summary.get("chi2_p")
+            if chi_p is None:
+                lines.append(f"    chi2: {summary.get('chi2'):.3f} (p: N/A)")
+            else:
+                lines.append(f"    chi2: {summary.get('chi2'):.3f} (p: {chi_p:.3e})")
+
+    if "grayscale" in result:
+        summary = result["grayscale"]
+        lines.append(
+            f"Grayscale peak: {summary['peak_intensity']} ({summary['peak_count']} pixels, {summary['peak_percentage']:.2f}% of {summary['total_pixels']})"
+        )
+        lines.append(f"Non-zero bins: {summary['non_zero_bins']}")
+        lines.append(f"Mean intensity: {summary['mean_intensity']:.6f}")
+        chi_p = summary.get("chi2_p")
+        if chi_p is None:
+            lines.append(f"chi2: {summary.get('chi2'):.3f} (p: N/A)")
+        else:
+            lines.append(f"chi2: {summary.get('chi2'):.3f} (p: {chi_p:.3e})")
+
+    if "luminance" in result:
+        summary = result["luminance"]
+        lines.append("Luminance:")
+        lines.append(
+            f"  peak: {summary['peak_intensity']} ({summary['peak_count']} pixels, {summary['peak_percentage']:.2f}% of {summary['total_pixels']})"
+        )
+        lines.append(f"  non-zero bins: {summary['non_zero_bins']}")
+        lines.append(f"  mean intensity: {summary['mean_intensity']:.6f}")
+        chi_p = summary.get("chi2_p")
+        if chi_p is None:
+            lines.append(f"  chi2: {summary.get('chi2'):.3f} (p: N/A)")
+        else:
+            lines.append(f"  chi2: {summary.get('chi2'):.3f} (p: {chi_p:.3e})")
+
+    return "\n".join(lines)
+
+
 def on_analyse() -> None:
     global selected_image_path
     if selected_image_path is None:
@@ -153,8 +202,17 @@ def on_analyse() -> None:
             arr = np.asarray(img, dtype=np.uint8)
             result = pixel_entropy(arr)
             text = format_result("Entropy results", result, percent=False)
+        elif metric == "Histogram":
+            img = Image.open(encrypted_path).convert("RGB")
+            arr = np.asarray(img, dtype=np.uint8)
+            result = image_histogram(arr)
+            text = format_histogram_result("Histogram results", result)
         else:
-            encrypted_plus_one_bit_path = encrypted_path.parent.parent / "encrypted_plus_one_bit" /  f"{encrypted_path.name}"
+            encrypted_plus_one_bit_path = (
+                encrypted_path.parent.parent
+                / "encrypted_plus_one_bit"
+                / f"{encrypted_path.name}"
+            )
             # Some analysis functions expect path strings or numpy arrays,
             # not Path objects. Convert to strings for compatibility.
             e_str = str(encrypted_path)
@@ -203,6 +261,7 @@ def build_analysis_menu(parent) -> None:
     make_btn("UACI")
     make_btn("Correlation")
     make_btn("Entropy")
+    make_btn("Histogram")
 
     analysis_selection.set(ANALYSIS_DEFAULT)
     analysis_buttons[ANALYSIS_DEFAULT].config(relief="sunken", bg="#cfe")
