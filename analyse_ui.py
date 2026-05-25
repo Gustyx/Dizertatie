@@ -7,7 +7,7 @@ from PIL import Image, ImageTk
 import numpy as np
 
 from correlation import correlation_between_images
-from entropy import pixel_entropy
+from entropy import pixel_entropy_with_blocks
 from histogram import image_histogram
 from nprc import number_of_pixel_change_rate
 from psnr import mean_squared_error, peak_signal_to_noise_ratio
@@ -189,6 +189,40 @@ def format_histogram_result(title: str, result: dict) -> str:
     return "\n".join(lines)
 
 
+def format_entropy_result(title: str, result: dict) -> str:
+    lines = [title]
+
+    if "per_channel" in result:
+        lines.append("Per channel:")
+        for channel, value in result["per_channel"].items():
+            lines.append(f"  {channel}: {value:.6f}")
+
+    if "grayscale" in result:
+        lines.append(f"Grayscale: {result['grayscale']:.6f}")
+    if "overall" in result:
+        lines.append(f"Overall: {result['overall']:.6f}")
+
+    if "block_entropies" in result:
+        for block_size in sorted(result["block_entropies"]):
+            block_result = result["block_entropies"][block_size]
+            lines.append(f"Block entropy ({block_size}x{block_size}):")
+            if "error" in block_result:
+                lines.append(f"  N/A: {block_result['error']}")
+                continue
+            if "per_channel" in block_result:
+                lines.append("  Per channel:")
+                for channel, value in block_result["per_channel"].items():
+                    lines.append(f"    {channel}: {value:.6f}")
+                lines.append(f"  Overall: {block_result['overall']:.6f}")
+            else:
+                lines.append(f"  Grayscale: {block_result['grayscale']:.6f}")
+            lines.append(
+                f"  Blocks used: {block_result['blocks']} ({block_result['used_size'][0]}x{block_result['used_size'][1]} area)"
+            )
+
+    return "\n".join(lines)
+
+
 def format_complete_analysis_result(result_sections: list[tuple[str, str]]) -> str:
     return "\n\n".join(f"{title}\n{body}" for title, body in result_sections)
 
@@ -285,8 +319,8 @@ def on_complete_analysis() -> None:
         sections.append(
             (
                 "Entropy results",
-                format_result(
-                    "Entropy results", pixel_entropy(arr), percent=False
+                format_entropy_result(
+                    "Entropy results", pixel_entropy_with_blocks(arr)
                 ).replace("Entropy results\n", "", 1),
             )
         )
@@ -326,8 +360,8 @@ def on_analyse() -> None:
             # of source image mode (RGBA, P, etc.).
             img = Image.open(encrypted_path).convert("RGB")
             arr = np.asarray(img, dtype=np.uint8)
-            result = pixel_entropy(arr)
-            text = format_result("Entropy results", result, percent=False)
+            result = pixel_entropy_with_blocks(arr)
+            text = format_entropy_result("Entropy results", result)
         elif metric == "Histogram":
             img = Image.open(encrypted_path).convert("RGB")
             arr = np.asarray(img, dtype=np.uint8)

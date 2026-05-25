@@ -121,6 +121,21 @@ def block_entropy(image, block_size=8):
     }
 
 
+def pixel_entropy_with_blocks(image, block_sizes=(8, 16, 32)):
+    """Compute global entropy and block entropy summaries together."""
+    result = pixel_entropy(image)
+    block_results = {}
+
+    for block_size in block_sizes:
+        try:
+            block_results[int(block_size)] = block_entropy(image, block_size=block_size)
+        except ValueError as exc:
+            block_results[int(block_size)] = {"error": str(exc)}
+
+    result["block_entropies"] = block_results
+    return result
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Compute entropy metrics for images")
     parser.add_argument("image", help="Path to image")
@@ -157,6 +172,20 @@ def main(argv=None):
         print(
             f"Blocks used: {result['blocks']} ({result['used_size'][0]}x{result['used_size'][1]} area)"
         )
+
+    if "block_entropies" in result:
+        for block_size, block_result in result["block_entropies"].items():
+            print(f"Block entropy ({block_size}x{block_size}):")
+            if "grayscale" in block_result:
+                print(f"  Grayscale: {block_result['grayscale']:.6f}")
+            else:
+                print("  Per channel:")
+                for channel, value in block_result["per_channel"].items():
+                    print(f"    {channel}: {value:.6f}")
+                print(f"    overall: {block_result['overall']:.6f}")
+            print(
+                f"  Blocks used: {block_result['blocks']} ({block_result['used_size'][0]}x{block_result['used_size'][1]} area)"
+            )
 
 
 if __name__ == "__main__":

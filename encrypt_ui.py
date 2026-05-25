@@ -8,13 +8,14 @@ import numpy as np
 
 from imagePixels import add_one_bit_to_pixel
 from correlation import correlation_between_images
-from entropy import pixel_entropy
+from entropy import pixel_entropy_with_blocks
 from histogram import image_histogram
 from nprc import number_of_pixel_change_rate
 from psnr import mean_squared_error, peak_signal_to_noise_ratio
 from uaci import unified_average_changing_intensity
 from analyse_ui import (
     format_complete_analysis_result,
+    format_entropy_result,
     format_histogram_result,
     format_result,
 )
@@ -244,8 +245,8 @@ def on_complete_analysis() -> None:
             ),
             (
                 "Entropy results",
-                format_result(
-                    "Entropy results", pixel_entropy(arr), percent=False
+                format_entropy_result(
+                    "Entropy results", pixel_entropy_with_blocks(arr)
                 ).replace("Entropy results\n", "", 1),
             ),
             (
