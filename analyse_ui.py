@@ -10,7 +10,9 @@ from correlation import correlation_between_images
 from entropy import pixel_entropy
 from histogram import image_histogram
 from nprc import number_of_pixel_change_rate
+from psnr import mean_squared_error, peak_signal_to_noise_ratio
 from uaci import unified_average_changing_intensity
+from ssim import structural_similarity
 
 ANALYSIS_DEFAULT = "NPCR"
 
@@ -18,6 +20,7 @@ selected_image_path: Path | None = None
 selected_image_tk = None
 action_buttons_frame: tk.Frame | None = None
 result_text: tk.StringVar | None = None
+result_widget: tk.Text | None = None
 analysis_selection: tk.StringVar | None = None
 analysis_buttons: dict[str, tk.Button] = {}
 result_frame: tk.LabelFrame | None = None
@@ -84,8 +87,14 @@ def reset_placeholder(canvas: tk.Canvas, text: str) -> None:
 
 
 def set_result_text(text: str) -> None:
-    if result_text is not None:
-        result_text.set(text)
+    if result_widget is None:
+        return
+
+    result_widget.config(state="normal")
+    result_widget.delete("1.0", tk.END)
+    result_widget.insert("1.0", text)
+    result_widget.config(state="disabled")
+    result_widget.yview_moveto(0)
 
 
 def choose_image(canvas: tk.Canvas) -> None:
@@ -180,6 +189,123 @@ def format_histogram_result(title: str, result: dict) -> str:
     return "\n".join(lines)
 
 
+def format_complete_analysis_result(result_sections: list[tuple[str, str]]) -> str:
+    return "\n\n".join(f"{title}\n{body}" for title, body in result_sections)
+
+
+def on_complete_analysis() -> None:
+    global selected_image_path
+    if selected_image_path is None:
+        messagebox.showwarning(
+            "No image", "Please choose or drop an encrypted image first."
+        )
+        return
+
+    try:
+        encrypted_path = selected_image_path
+        encrypted_plus_one_bit_path = (
+            encrypted_path.parent.parent
+            / "encrypted_plus_one_bit"
+            / f"{encrypted_path.name}"
+        )
+        plain_path = (
+            encrypted_path.parent.parent
+            / "plain"
+            / f"{encrypted_path.name.split('_enc_')[-1]}"
+        )
+
+        e_str = str(encrypted_path)
+        eb_str = str(encrypted_plus_one_bit_path)
+        p_str = str(plain_path)
+
+        img = Image.open(encrypted_path).convert("RGB")
+        arr = np.asarray(img, dtype=np.uint8)
+
+        sections = []
+        sections.append(
+            (
+                "NPCR results",
+                format_result(
+                    "NPCR results",
+                    number_of_pixel_change_rate(e_str, eb_str),
+                    percent=True,
+                ).replace("NPCR results\n", "", 1),
+            )
+        )
+        sections.append(
+            (
+                "UACI results",
+                format_result(
+                    "UACI results",
+                    unified_average_changing_intensity(e_str, eb_str),
+                    percent=True,
+                ).replace("UACI results\n", "", 1),
+            )
+        )
+        sections.append(
+            (
+                "Correlation results",
+                format_result(
+                    "Correlation results",
+                    correlation_between_images(e_str, eb_str),
+                    percent=False,
+                ).replace("Correlation results\n", "", 1),
+            )
+        )
+        sections.append(
+            (
+                "MSE results",
+                format_result(
+                    "MSE results",
+                    mean_squared_error(e_str, p_str),
+                    percent=False,
+                ).replace("MSE results\n", "", 1),
+            )
+        )
+        sections.append(
+            (
+                "PSNR results",
+                format_result(
+                    "PSNR results",
+                    peak_signal_to_noise_ratio(e_str, p_str),
+                    percent=False,
+                ).replace("PSNR results\n", "", 1),
+            )
+        )
+        sections.append(
+            (
+                "SSIM results",
+                format_result(
+                    "SSIM results",
+                    structural_similarity(e_str, p_str),
+                    percent=False,
+                ).replace("SSIM results\n", "", 1),
+            )
+        )
+        sections.append(
+            (
+                "Entropy results",
+                format_result(
+                    "Entropy results", pixel_entropy(arr), percent=False
+                ).replace("Entropy results\n", "", 1),
+            )
+        )
+        sections.append(
+            (
+                "Histogram results",
+                format_histogram_result(
+                    "Histogram results", image_histogram(arr)
+                ).replace("Histogram results\n", "", 1),
+            )
+        )
+
+        set_result_text(format_complete_analysis_result(sections))
+    except Exception as exc:
+        messagebox.showerror(
+            "Error", f"Analysis failed:\n{exc}\n\n{traceback.format_exc()}"
+        )
+
+
 def on_analyse() -> None:
     global selected_image_path
     if selected_image_path is None:
@@ -213,10 +339,17 @@ def on_analyse() -> None:
                 / "encrypted_plus_one_bit"
                 / f"{encrypted_path.name}"
             )
+            plain_path = (
+                encrypted_path.parent.parent
+                / "plain"
+                / f"{encrypted_path.name.split('_enc_')[-1]}"
+            )
             # Some analysis functions expect path strings or numpy arrays,
             # not Path objects. Convert to strings for compatibility.
             e_str = str(encrypted_path)
             eb_str = str(encrypted_plus_one_bit_path)
+            p_str = str(plain_path)
+
             if metric == "NPCR":
                 result = number_of_pixel_change_rate(e_str, eb_str)
                 text = format_result("NPCR results", result, percent=True)
@@ -226,6 +359,15 @@ def on_analyse() -> None:
             elif metric == "Correlation":
                 result = correlation_between_images(e_str, eb_str)
                 text = format_result("Correlation results", result, percent=False)
+            elif metric == "PSNR":
+                result = peak_signal_to_noise_ratio(e_str, p_str)
+                text = format_result("PSNR results", result, percent=False)
+            elif metric == "SSIM":
+                result = structural_similarity(e_str, p_str)
+                text = format_result("SSIM results", result, percent=False)
+            elif metric == "MSE":
+                result = mean_squared_error(e_str, p_str)
+                text = format_result("MSE results", result, percent=False)
             else:
                 raise ValueError(f"Unsupported analysis metric: {metric}")
 
@@ -260,6 +402,9 @@ def build_analysis_menu(parent) -> None:
     make_btn("NPCR")
     make_btn("UACI")
     make_btn("Correlation")
+    make_btn("MSE")
+    make_btn("PSNR")
+    make_btn("SSIM")
     make_btn("Entropy")
     make_btn("Histogram")
 
@@ -324,22 +469,40 @@ def build_ui() -> None:
     )
     analyse_btn.pack(pady=(6, 0))
 
+    complete_btn = tk.Button(
+        action_buttons_frame,
+        text="Complete Analysis",
+        width=16,
+        command=on_complete_analysis,
+    )
+    complete_btn.pack(pady=(6, 0))
+
     result_frame = tk.LabelFrame(content, text="Results")
 
-    global result_text
-    result_text = tk.StringVar(
-        value="Choose an encrypted image, then run NPCR, UACI, Correlation, or Entropy."
-    )
-    result_label = tk.Label(
-        result_frame,
-        textvariable=result_text,
-        justify="left",
-        anchor="nw",
-        wraplength=520,
+    global result_widget
+    result_container = tk.Frame(result_frame)
+    result_container.pack(fill="both", expand=True)
+
+    result_scrollbar = tk.Scrollbar(result_container, orient="vertical")
+    result_scrollbar.pack(side="right", fill="y")
+
+    result_widget = tk.Text(
+        result_container,
+        wrap="word",
+        height=14,
         padx=8,
         pady=8,
+        yscrollcommand=result_scrollbar.set,
+        relief="flat",
+        borderwidth=0,
     )
-    result_label.pack(fill="both", expand=True)
+    result_widget.pack(side="left", fill="both", expand=True)
+    result_scrollbar.config(command=result_widget.yview)
+    result_widget.insert(
+        "1.0",
+        "Choose an encrypted image, then run NPCR, UACI, Correlation, MSE, PSNR, Entropy, Histogram, or Complete Analysis.",
+    )
+    result_widget.config(state="disabled")
 
     # Hide analysis controls until an image is selected.
     action_buttons_frame.pack_forget()

@@ -4,7 +4,21 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 
+import numpy as np
+
 from imagePixels import add_one_bit_to_pixel
+from correlation import correlation_between_images
+from entropy import pixel_entropy
+from histogram import image_histogram
+from nprc import number_of_pixel_change_rate
+from psnr import mean_squared_error, peak_signal_to_noise_ratio
+from uaci import unified_average_changing_intensity
+from analyse_ui import (
+    format_complete_analysis_result,
+    format_histogram_result,
+    format_result,
+)
+from ssim import structural_similarity
 
 try:
     import enryptImage
@@ -18,6 +32,8 @@ ALGORITHM_DEFAULT = "AES_CTR"
 selected_image_path: Path | None = None
 selected_image_tk = None
 action_buttons_frame: tk.Frame | None = None
+result_frame: tk.LabelFrame | None = None
+result_widget: tk.Text | None = None
 ALGORITHM_SELECTION: tk.StringVar | None = None
 ALGORITHM_BUTTONS: dict = {}
 ALGORITHM_BUTTON_VALUES: dict = {}
@@ -45,13 +61,15 @@ def display_image(path: Path, canvas: tk.Canvas, max_size=(800, 600)) -> None:
 
     if action_buttons_frame is not None and not action_buttons_frame.winfo_ismapped():
         action_buttons_frame.pack(pady=(6, 0))
+    if result_frame is not None and not result_frame.winfo_ismapped():
+        result_frame.pack(fill="both", expand=True, pady=(8, 0))
 
     # Resize top-level window to fit image (only enlarge, don't shrink)
     try:
         top = canvas.winfo_toplevel()
         top.update_idletasks()
         new_w = selected_image_tk.width() + 40
-        new_h = selected_image_tk.height() + 140
+        new_h = selected_image_tk.height() + 320
 
         cur_w = top.winfo_width()
         cur_h = top.winfo_height()
@@ -63,6 +81,17 @@ def display_image(path: Path, canvas: tk.Canvas, max_size=(800, 600)) -> None:
             top.geometry(f"{target_w}x{target_h}")
     except Exception:
         pass
+
+
+def set_result_text(text: str) -> None:
+    if result_widget is None:
+        return
+
+    result_widget.config(state="normal")
+    result_widget.delete("1.0", tk.END)
+    result_widget.insert("1.0", text)
+    result_widget.config(state="disabled")
+    result_widget.yview_moveto(0)
 
 
 def choose_image(canvas: tk.Canvas) -> None:
@@ -87,14 +116,14 @@ def on_drop(event, canvas: tk.Canvas) -> None:
         return
 
 
-def on_encrypt(canvas: tk.Canvas) -> None:
+def on_encrypt(canvas: tk.Canvas) -> Path | None:
     global selected_image_path
     if enryptImage is None:
         messagebox.showerror("Error", "enryptImage module not available")
-        return
+        return None
     if selected_image_path is None:
         messagebox.showwarning("No image", "Please choose or drop an image first.")
-        return
+        return None
 
     try:
         input_path = selected_image_path
@@ -114,14 +143,12 @@ def on_encrypt(canvas: tk.Canvas) -> None:
 
         prefix = alg.lower()
         output_path = encrypted_dir / f"{prefix}_enc_{input_path.name}"
-        
-        enryptImage.encrypt_image(
-            input_path, output_path, KEY_PHRASE, algorithm=alg
-        )
+
+        enryptImage.encrypt_image(input_path, output_path, KEY_PHRASE, algorithm=alg)
 
         input_path_2 = add_one_bit_to_pixel(input_path)
         output_path_2 = encrypted_plus_one_bit_dir / f"{prefix}_enc_{input_path.name}"
-        
+
         enryptImage.encrypt_image(
             input_path_2, output_path_2, KEY_PHRASE, algorithm=alg
         )
@@ -130,10 +157,117 @@ def on_encrypt(canvas: tk.Canvas) -> None:
             display_image(output_path, canvas)
         except Exception:
             pass
+        return output_path
     except Exception as exc:
         messagebox.showerror(
             "Error", f"Encryption failed:\n{exc}\n\n{traceback.format_exc()}"
         )
+        return None
+
+
+def on_complete_analysis() -> None:
+    global selected_image_path
+    if selected_image_path is None:
+        messagebox.showwarning(
+            "No image", "Please choose or drop an encrypted image first."
+        )
+        return
+
+    try:
+        encrypted_path = selected_image_path
+        encrypted_plus_one_bit_path = (
+            encrypted_path.parent.parent
+            / "encrypted_plus_one_bit"
+            / f"{encrypted_path.name}"
+        )
+        plain_path = (
+            encrypted_path.parent.parent
+            / "plain"
+            / f"{encrypted_path.name.split('_enc_')[-1]}"
+        )
+
+        e_str = str(encrypted_path)
+        eb_str = str(encrypted_plus_one_bit_path)
+        p_str = str(plain_path)
+
+        img = Image.open(encrypted_path).convert("RGB")
+        arr = np.asarray(img, dtype=np.uint8)
+
+        sections = [
+            (
+                "NPCR results",
+                format_result(
+                    "NPCR results",
+                    number_of_pixel_change_rate(e_str, eb_str),
+                    percent=True,
+                ).replace("NPCR results\n", "", 1),
+            ),
+            (
+                "UACI results",
+                format_result(
+                    "UACI results",
+                    unified_average_changing_intensity(e_str, eb_str),
+                    percent=True,
+                ).replace("UACI results\n", "", 1),
+            ),
+            (
+                "Correlation results",
+                format_result(
+                    "Correlation results",
+                    correlation_between_images(e_str, eb_str),
+                    percent=False,
+                ).replace("Correlation results\n", "", 1),
+            ),
+            (
+                "MSE results",
+                format_result(
+                    "MSE results",
+                    mean_squared_error(e_str, p_str),
+                    percent=False,
+                ).replace("MSE results\n", "", 1),
+            ),
+            (
+                "PSNR results",
+                format_result(
+                    "PSNR results",
+                    peak_signal_to_noise_ratio(e_str, p_str),
+                    percent=False,
+                ).replace("PSNR results\n", "", 1),
+            ),
+            (
+                "SSIM results",
+                format_result(
+                    "SSIM results",
+                    structural_similarity(e_str, p_str),
+                    percent=False,
+                ).replace("SSIM results\n", "", 1),
+            ),
+            (
+                "Entropy results",
+                format_result(
+                    "Entropy results", pixel_entropy(arr), percent=False
+                ).replace("Entropy results\n", "", 1),
+            ),
+            (
+                "Histogram results",
+                format_histogram_result(
+                    "Histogram results", image_histogram(arr)
+                ).replace("Histogram results\n", "", 1),
+            ),
+        ]
+
+        set_result_text(format_complete_analysis_result(sections))
+    except Exception as exc:
+        messagebox.showerror(
+            "Error", f"Analysis failed:\n{exc}\n\n{traceback.format_exc()}"
+        )
+
+
+def on_encrypt_and_analysis(canvas: tk.Canvas) -> None:
+    output_path = on_encrypt(canvas)
+    if output_path is None:
+        return
+    on_complete_analysis()
 
 
 def on_decrypt(canvas: tk.Canvas) -> None:
@@ -254,6 +388,12 @@ def build_buttons(frame, img_box) -> None:
         width=12,
         command=lambda: on_encrypt(img_box),
     )
+    encrypt_analysis_btn = tk.Button(
+        action_buttons_frame,
+        text="Encrypt + Analysis",
+        width=18,
+        command=lambda: on_encrypt_and_analysis(img_box),
+    )
     decrypt_btn = tk.Button(
         action_buttons_frame,
         text="Decrypt",
@@ -261,6 +401,7 @@ def build_buttons(frame, img_box) -> None:
         command=lambda: on_decrypt(img_box),
     )
     encrypt_btn.pack(side="left", padx=6)
+    encrypt_analysis_btn.pack(side="left", padx=6)
     decrypt_btn.pack(side="left", padx=6)
 
 
@@ -339,6 +480,32 @@ def build_ui() -> None:
 
     build_buttons(controls_frame, img_box)
 
+    global result_frame, result_widget
+    result_frame = tk.LabelFrame(content, text="Results")
+    result_container = tk.Frame(result_frame)
+    result_container.pack(fill="both", expand=True)
+
+    result_scrollbar = tk.Scrollbar(result_container, orient="vertical")
+    result_scrollbar.pack(side="right", fill="y")
+
+    result_widget = tk.Text(
+        result_container,
+        wrap="word",
+        height=14,
+        padx=8,
+        pady=8,
+        yscrollcommand=result_scrollbar.set,
+        relief="flat",
+        borderwidth=0,
+    )
+    result_widget.pack(side="left", fill="both", expand=True)
+    result_scrollbar.config(command=result_widget.yview)
+    result_widget.insert(
+        "1.0",
+        "Choose an image, then run Encrypt + Analysis to see all metrics in one scrollable results box.",
+    )
+    result_widget.config(state="disabled")
+
     # Mode switch button to open analysis UI
     def switch_to_analyse():
         try:
@@ -356,6 +523,8 @@ def build_ui() -> None:
     bottom.pack(side="bottom", fill="x", pady=(8, 0))
     switch_btn = tk.Button(bottom, text="Analyse", width=12, command=switch_to_analyse)
     switch_btn.pack()
+
+    result_frame.pack_forget()
 
     root.mainloop()
 
