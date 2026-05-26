@@ -1,25 +1,38 @@
 from pathlib import Path
 import traceback
 import tkinter as tk
-from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk
+from tkinter import messagebox
 
+from PIL import Image
 import numpy as np
 
 from imagePixels import add_one_bit_to_pixel
-from correlation import correlation_between_images
 from entropy import pixel_entropy_with_blocks
 from histogram import image_histogram
+from handleImage import (
+    DND_AVAILABLE,
+    ImageUiState,
+    build_image_box,
+    choose_image,
+    display_image,
+    set_result_text,
+)
 from nprc import number_of_pixel_change_rate
 from psnr import mean_squared_error, peak_signal_to_noise_ratio
 from uaci import unified_average_changing_intensity
 from analyse_ui import (
     format_complete_analysis_result,
+    format_correlation_result,
     format_entropy_result,
     format_histogram_result,
     format_result,
 )
 from ssim import structural_similarity
+
+try:
+    from tkinterdnd2 import TkinterDnD
+except Exception:
+    TkinterDnD = None
 
 try:
     import enryptImage
@@ -29,105 +42,21 @@ except Exception:
 KEY_PHRASE = "encryptionkey"
 ALGORITHM_DEFAULT = "AES_CTR"
 
-# state for selected image
-selected_image_path: Path | None = None
-selected_image_tk = None
-action_buttons_frame: tk.Frame | None = None
-result_frame: tk.LabelFrame | None = None
-result_widget: tk.Text | None = None
+ui_state = ImageUiState()
 ALGORITHM_SELECTION: tk.StringVar | None = None
-ALGORITHM_BUTTONS: dict = {}
-ALGORITHM_BUTTON_VALUES: dict = {}
-
-# try to enable drag-and-drop support (optional)
-try:
-    from tkinterdnd2 import DND_FILES, TkinterDnD
-
-    DND_AVAILABLE = True
-except Exception:
-    DND_AVAILABLE = False
-
-
-def display_image(path: Path, canvas: tk.Canvas, max_size=(800, 600)) -> None:
-    global selected_image_tk, selected_image_path
-    img = Image.open(path)
-    img.thumbnail(max_size)
-    selected_image_tk = ImageTk.PhotoImage(img)
-
-    # adjust canvas to image pixel size and draw image at top-left
-    canvas.delete("all")
-    canvas.config(width=selected_image_tk.width(), height=selected_image_tk.height())
-    canvas.create_image(0, 0, anchor="nw", image=selected_image_tk)
-    selected_image_path = path
-
-    if action_buttons_frame is not None and not action_buttons_frame.winfo_ismapped():
-        action_buttons_frame.pack(pady=(6, 0))
-    if result_frame is not None and not result_frame.winfo_ismapped():
-        result_frame.pack(fill="both", expand=True, pady=(8, 0))
-
-    # Resize top-level window to fit image (only enlarge, don't shrink)
-    try:
-        top = canvas.winfo_toplevel()
-        top.update_idletasks()
-        new_w = selected_image_tk.width() + 40
-        new_h = selected_image_tk.height() + 320
-
-        cur_w = top.winfo_width()
-        cur_h = top.winfo_height()
-
-        # If the image requires a larger window, enlarge; otherwise leave as-is
-        if new_w > cur_w or new_h > cur_h:
-            target_w = max(new_w, cur_w)
-            target_h = max(new_h, cur_h)
-            top.geometry(f"{target_w}x{target_h}")
-    except Exception:
-        pass
-
-
-def set_result_text(text: str) -> None:
-    if result_widget is None:
-        return
-
-    result_widget.config(state="normal")
-    result_widget.delete("1.0", tk.END)
-    result_widget.insert("1.0", text)
-    result_widget.config(state="disabled")
-    result_widget.yview_moveto(0)
-
-
-def choose_image(canvas: tk.Canvas) -> None:
-    file = filedialog.askopenfilename(
-        title="Select image",
-        filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.tiff *.gif")],
-    )
-    if not file:
-        return
-    display_image(Path(file), canvas)
-
-
-def on_drop(event, canvas: tk.Canvas) -> None:
-    # event.data may contain a Tcl list of filenames
-    try:
-        parts = canvas.master.tk.splitlist(event.data)
-        if not parts:
-            return
-        file = parts[0]
-        display_image(Path(file), canvas)
-    except Exception:
-        return
+ALGORITHM_BUTTONS: dict[str, tk.Button] = {}
 
 
 def on_encrypt(canvas: tk.Canvas) -> Path | None:
-    global selected_image_path
     if enryptImage is None:
         messagebox.showerror("Error", "enryptImage module not available")
         return None
-    if selected_image_path is None:
+    if ui_state.selected_image_path is None:
         messagebox.showwarning("No image", "Please choose or drop an image first.")
         return None
 
     try:
-        input_path = selected_image_path
+        input_path = ui_state.selected_image_path
         base_dir = Path(__file__).resolve().parent
         encrypted_dir = base_dir / "images" / "encrypted"
         encrypted_dir.mkdir(parents=True, exist_ok=True)
@@ -155,7 +84,7 @@ def on_encrypt(canvas: tk.Canvas) -> Path | None:
         )
         # replace displayed image with encrypted output
         try:
-            display_image(output_path, canvas)
+            display_image(output_path, canvas, ui_state, extra_window_height=320)
         except Exception:
             pass
         return output_path
@@ -167,15 +96,14 @@ def on_encrypt(canvas: tk.Canvas) -> Path | None:
 
 
 def on_complete_analysis() -> None:
-    global selected_image_path
-    if selected_image_path is None:
+    if ui_state.selected_image_path is None:
         messagebox.showwarning(
             "No image", "Please choose or drop an encrypted image first."
         )
         return
 
     try:
-        encrypted_path = selected_image_path
+        encrypted_path = ui_state.selected_image_path
         encrypted_plus_one_bit_path = (
             encrypted_path.parent.parent
             / "encrypted_plus_one_bit"
@@ -213,10 +141,8 @@ def on_complete_analysis() -> None:
             ),
             (
                 "Correlation results",
-                format_result(
-                    "Correlation results",
-                    correlation_between_images(e_str, eb_str),
-                    percent=False,
+                format_correlation_result(
+                    "Correlation results", e_str, p_str, eb_str
                 ).replace("Correlation results\n", "", 1),
             ),
             (
@@ -257,7 +183,7 @@ def on_complete_analysis() -> None:
             ),
         ]
 
-        set_result_text(format_complete_analysis_result(sections))
+        set_result_text(ui_state, format_complete_analysis_result(sections))
     except Exception as exc:
         messagebox.showerror(
             "Error", f"Analysis failed:\n{exc}\n\n{traceback.format_exc()}"
@@ -272,16 +198,15 @@ def on_encrypt_and_analysis(canvas: tk.Canvas) -> None:
 
 
 def on_decrypt(canvas: tk.Canvas) -> None:
-    global selected_image_path
     if enryptImage is None:
         messagebox.showerror("Error", "enryptImage module not available")
         return
-    if selected_image_path is None:
+    if ui_state.selected_image_path is None:
         messagebox.showwarning("No image", "Please choose or drop an image first.")
         return
 
     try:
-        input_path = selected_image_path
+        input_path = ui_state.selected_image_path
 
         base_dir = Path(__file__).resolve().parent
         decrypted_dir = base_dir / "images" / "decrypted"
@@ -327,7 +252,7 @@ def on_decrypt(canvas: tk.Canvas) -> None:
         )
         # replace displayed image with decrypted output
         try:
-            display_image(output_path, canvas)
+            display_image(output_path, canvas, ui_state, extra_window_height=320)
         except Exception:
             pass
     except Exception as exc:
@@ -336,67 +261,36 @@ def on_decrypt(canvas: tk.Canvas) -> None:
         )
 
 
-def build_image_box(frame) -> None:
-    # image display area using a Canvas (starts with placeholder size)
-    img_box = tk.Canvas(
-        frame, bg="#ffffff", relief="flat", width=400, height=240, highlightthickness=0
-    )
-    # visible dashed border and placeholder text so users know where to drop
-    padding = 8
-    w, h = 400, 240
-    img_box.create_rectangle(
-        padding,
-        padding,
-        w - padding,
-        h - padding,
-        outline="#666",
-        width=2,
-        dash=(4, 4),
-        tags=("placeholder",),
-    )
-    img_box.create_text(
-        w // 2,
-        h // 2,
-        text="Drop or choose an image",
-        fill="#666",
-        tags=("placeholder",),
-    )
-    img_box.pack(pady=(0, 8), anchor="n")
-
-    # enable drag-and-drop if available
-    if DND_AVAILABLE:
-        try:
-            img_box.drop_target_register(DND_FILES)
-            img_box.dnd_bind("<<Drop>>", lambda e: on_drop(e, img_box))
-        except Exception:
-            pass
-
-    return img_box
-
-
 def build_buttons(frame, img_box) -> None:
     choose_btn = tk.Button(
-        frame, text="Choose image", command=lambda: choose_image(img_box)
+        frame,
+        text="Choose image",
+        command=lambda: choose_image(
+            img_box,
+            ui_state,
+            title="Select image",
+            initialdir=str(Path(__file__).resolve().parent / "images" / "plain"),
+            extra_window_height=320,
+        ),
     )
     choose_btn.pack()
 
-    global action_buttons_frame
-    action_buttons_frame = tk.Frame(frame)
+    ui_state.action_buttons_frame = tk.Frame(frame)
 
     encrypt_btn = tk.Button(
-        action_buttons_frame,
+        ui_state.action_buttons_frame,
         text="Encrypt",
         width=12,
         command=lambda: on_encrypt(img_box),
     )
     encrypt_analysis_btn = tk.Button(
-        action_buttons_frame,
+        ui_state.action_buttons_frame,
         text="Encrypt + Analysis",
         width=18,
         command=lambda: on_encrypt_and_analysis(img_box),
     )
     decrypt_btn = tk.Button(
-        action_buttons_frame,
+        ui_state.action_buttons_frame,
         text="Decrypt",
         width=12,
         command=lambda: on_decrypt(img_box),
@@ -411,50 +305,42 @@ def build_algorithm_menu(parent) -> None:
     global ALGORITHM_SELECTION, ALGORITHM_BUTTONS
     ALGORITHM_SELECTION = tk.StringVar(value=ALGORITHM_DEFAULT)
 
-    label = tk.Label(parent, text="Algorithms", font=(None, 10, "bold"))
-    label.pack(pady=(0, 6))
+    tk.Label(parent, text="Algorithms", font=(None, 10, "bold")).pack(pady=(0, 6))
 
-    def make_btn(display_name: str, value: str | None = None):
-        if value is None:
-            value = display_name
-
+    def make_btn(display_name: str) -> None:
         btn = tk.Button(parent, text=display_name, width=12)
 
         def on_click():
-            set_algorithm(display_name, value)
+            set_algorithm(display_name)
 
         btn.config(command=on_click)
         btn.pack(pady=4, fill="x")
         ALGORITHM_BUTTONS[display_name] = btn
-        ALGORITHM_BUTTON_VALUES[display_name] = value
 
-    make_btn("AES-CTR", "AES_CTR")
-    make_btn("AES-CBC", "AES_CBC")
-    make_btn("AES-GCM", "AES_GCM")
-    make_btn("AES-CCM", "AES_CCM")
+    make_btn("AES_CTR")
+    make_btn("AES_CBC")
+    make_btn("AES_GCM")
+    make_btn("AES_CCM")
     make_btn("DES")
-    make_btn("Custom AES", "CUSTOM_AES")
-
-    make_btn("ChaCha20", "CHACHA20")
+    make_btn("Custom_AES")
+    make_btn("ChaCha20")
 
     # initialize visuals
-    def set_algorithm(display_name: str, value: str | None = None):
-        if value is None:
-            value = ALGORITHM_BUTTON_VALUES.get(display_name, display_name)
-
-        ALGORITHM_SELECTION.set(value)
-        for n, b in ALGORITHM_BUTTONS.items():
-            if n == display_name:
-                b.config(relief="sunken", bg="#cfe")
+    def set_algorithm(display_name: str):
+        ALGORITHM_SELECTION.set(display_name)
+        for name, btn in ALGORITHM_BUTTONS.items():
+            if name == display_name:
+                btn.config(relief="sunken", bg="#cfe")
             else:
-                b.config(relief="raised", bg=parent.cget("bg"))
+                btn.config(relief="raised", bg=parent.cget("bg"))
 
     set_algorithm(ALGORITHM_DEFAULT)
+    ALGORITHM_BUTTONS[ALGORITHM_DEFAULT].config(relief="sunken", bg="#cfe")
 
 
 def build_ui() -> None:
     # create root (use DnD root if available)
-    if DND_AVAILABLE:
+    if TkinterDnD is not None:
         root = TkinterDnD.Tk()
     else:
         root = tk.Tk()
@@ -474,22 +360,26 @@ def build_ui() -> None:
     content = tk.Frame(frame)
     content.pack(side="left", fill="both", expand=True)
 
-    img_box = build_image_box(content)
+    img_box = build_image_box(
+        content,
+        ui_state,
+        placeholder_text="Drop or choose an image",
+        extra_window_height=320,
+    )
 
     controls_frame = tk.Frame(content)
     controls_frame.pack()
 
     build_buttons(controls_frame, img_box)
 
-    global result_frame, result_widget
-    result_frame = tk.LabelFrame(content, text="Results")
-    result_container = tk.Frame(result_frame)
+    ui_state.result_frame = tk.LabelFrame(content, text="Results")
+    result_container = tk.Frame(ui_state.result_frame)
     result_container.pack(fill="both", expand=True)
 
     result_scrollbar = tk.Scrollbar(result_container, orient="vertical")
     result_scrollbar.pack(side="right", fill="y")
 
-    result_widget = tk.Text(
+    ui_state.result_widget = tk.Text(
         result_container,
         wrap="word",
         height=14,
@@ -499,13 +389,13 @@ def build_ui() -> None:
         relief="flat",
         borderwidth=0,
     )
-    result_widget.pack(side="left", fill="both", expand=True)
-    result_scrollbar.config(command=result_widget.yview)
-    result_widget.insert(
+    ui_state.result_widget.pack(side="left", fill="both", expand=True)
+    result_scrollbar.config(command=ui_state.result_widget.yview)
+    ui_state.result_widget.insert(
         "1.0",
         "Choose an image, then run Encrypt + Analysis to see all metrics in one scrollable results box.",
     )
-    result_widget.config(state="disabled")
+    ui_state.result_widget.config(state="disabled")
 
     # Mode switch button to open analysis UI
     def switch_to_analyse():
@@ -525,7 +415,7 @@ def build_ui() -> None:
     switch_btn = tk.Button(bottom, text="Analyse", width=12, command=switch_to_analyse)
     switch_btn.pack()
 
-    result_frame.pack_forget()
+    ui_state.result_frame.pack_forget()
 
     root.mainloop()
 

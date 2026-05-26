@@ -1,123 +1,35 @@
 from pathlib import Path
 import traceback
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
 
-from PIL import Image, ImageTk
+from PIL import Image
 import numpy as np
 
-from correlation import correlation_between_images
+from correlation import (
+    correlation_between_images,
+    diagonal_pixel_correlation,
+    horizontal_pixel_correlation,
+    vertical_pixel_correlation,
+)
 from entropy import pixel_entropy_with_blocks
 from histogram import image_histogram
+from handleImage import ImageUiState, build_image_box, choose_image, set_result_text
 from nprc import number_of_pixel_change_rate
 from psnr import mean_squared_error, peak_signal_to_noise_ratio
 from uaci import unified_average_changing_intensity
 from ssim import structural_similarity
 
+try:
+    from tkinterdnd2 import TkinterDnD
+except Exception:
+    TkinterDnD = None
+
 ANALYSIS_DEFAULT = "NPCR"
 
-selected_image_path: Path | None = None
-selected_image_tk = None
-action_buttons_frame: tk.Frame | None = None
-result_text: tk.StringVar | None = None
-result_widget: tk.Text | None = None
+ui_state = ImageUiState()
 analysis_selection: tk.StringVar | None = None
 analysis_buttons: dict[str, tk.Button] = {}
-result_frame: tk.LabelFrame | None = None
-
-try:
-    from tkinterdnd2 import DND_FILES, TkinterDnD
-
-    DND_AVAILABLE = True
-except Exception:
-    DND_AVAILABLE = False
-
-
-def display_image(path: Path, canvas: tk.Canvas, max_size=(800, 600)) -> None:
-    global selected_image_tk, selected_image_path
-    img = Image.open(path)
-    img.thumbnail(max_size)
-    selected_image_tk = ImageTk.PhotoImage(img)
-
-    canvas.delete("all")
-    canvas.config(width=selected_image_tk.width(), height=selected_image_tk.height())
-    canvas.create_image(0, 0, anchor="nw", image=selected_image_tk)
-    selected_image_path = path
-
-    if action_buttons_frame is not None and not action_buttons_frame.winfo_ismapped():
-        action_buttons_frame.pack(pady=(6, 0))
-    if result_frame is not None and not result_frame.winfo_ismapped():
-        result_frame.pack(fill="both", expand=True, pady=(8, 0))
-
-    try:
-        top = canvas.winfo_toplevel()
-        top.update_idletasks()
-        new_w = selected_image_tk.width() + 40
-        new_h = selected_image_tk.height() + 180
-        if new_w > top.winfo_width() or new_h > top.winfo_height():
-            top.geometry(
-                f"{max(new_w, top.winfo_width())}x{max(new_h, top.winfo_height())}"
-            )
-    except Exception:
-        pass
-
-
-def reset_placeholder(canvas: tk.Canvas, text: str) -> None:
-    canvas.delete("all")
-    padding = 8
-    width = int(canvas.cget("width"))
-    height = int(canvas.cget("height"))
-    canvas.create_rectangle(
-        padding,
-        padding,
-        width - padding,
-        height - padding,
-        outline="#666",
-        width=2,
-        dash=(4, 4),
-        tags=("placeholder",),
-    )
-    canvas.create_text(
-        width // 2,
-        height // 2,
-        text=text,
-        fill="#666",
-        tags=("placeholder",),
-    )
-
-
-def set_result_text(text: str) -> None:
-    if result_widget is None:
-        return
-
-    result_widget.config(state="normal")
-    result_widget.delete("1.0", tk.END)
-    result_widget.insert("1.0", text)
-    result_widget.config(state="disabled")
-    result_widget.yview_moveto(0)
-
-
-def choose_image(canvas: tk.Canvas) -> None:
-    base_dir = Path(__file__).resolve().parent
-    encrypted_dir = base_dir / "images" / "encrypted"
-    file = filedialog.askopenfilename(
-        title="Select encrypted image",
-        initialdir=str(encrypted_dir) if encrypted_dir.exists() else None,
-        filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.tiff *.gif")],
-    )
-    if not file:
-        return
-    display_image(Path(file), canvas)
-
-
-def on_drop(event, canvas: tk.Canvas) -> None:
-    try:
-        parts = canvas.master.tk.splitlist(event.data)
-        if not parts:
-            return
-        display_image(Path(parts[0]), canvas)
-    except Exception:
-        return
 
 
 def format_result(title: str, result: dict, percent: bool = False) -> str:
@@ -139,6 +51,67 @@ def format_result(title: str, result: dict, percent: bool = False) -> str:
             f"Blocks used: {result['blocks']} ({result['used_size'][0]}x{result['used_size'][1]} area)"
         )
     return "\n".join(lines)
+
+
+def format_correlation_result(
+    title: str,
+    encrypted_path: str,
+    plain_path: str,
+    encrypted_plus_one_bit_path: str,
+) -> str:
+    sections = [
+        (
+            "Adjacent pixels inside encrypted image",
+            format_complete_analysis_result(
+                [
+                    (
+                        "Horizontal",
+                        format_result(
+                            "Horizontal",
+                            horizontal_pixel_correlation(encrypted_path),
+                            percent=False,
+                        ).replace("Horizontal\n", "", 1),
+                    ),
+                    (
+                        "Vertical",
+                        format_result(
+                            "Vertical",
+                            vertical_pixel_correlation(encrypted_path),
+                            percent=False,
+                        ).replace("Vertical\n", "", 1),
+                    ),
+                    (
+                        "Diagonal",
+                        format_result(
+                            "Diagonal",
+                            diagonal_pixel_correlation(encrypted_path),
+                            percent=False,
+                        ).replace("Diagonal\n", "", 1),
+                    ),
+                ]
+            ),
+        ),
+        (
+            "Plain vs encrypted image",
+            format_result(
+                "Plain vs encrypted image",
+                correlation_between_images(plain_path, encrypted_path),
+                percent=False,
+            ).replace("Plain vs encrypted image\n", "", 1),
+        ),
+        (
+            "Encrypted vs encrypted plus one bit",
+            format_result(
+                "Encrypted vs encrypted plus one bit",
+                correlation_between_images(encrypted_path, encrypted_plus_one_bit_path),
+                percent=False,
+            ).replace("Encrypted vs encrypted plus one bit\n", "", 1),
+        ),
+    ]
+
+    return format_complete_analysis_result(
+        [(title, format_complete_analysis_result(sections))]
+    )
 
 
 def format_histogram_result(title: str, result: dict) -> str:
@@ -228,15 +201,14 @@ def format_complete_analysis_result(result_sections: list[tuple[str, str]]) -> s
 
 
 def on_complete_analysis() -> None:
-    global selected_image_path
-    if selected_image_path is None:
+    if ui_state.selected_image_path is None:
         messagebox.showwarning(
             "No image", "Please choose or drop an encrypted image first."
         )
         return
 
     try:
-        encrypted_path = selected_image_path
+        encrypted_path = ui_state.selected_image_path
         encrypted_plus_one_bit_path = (
             encrypted_path.parent.parent
             / "encrypted_plus_one_bit"
@@ -279,10 +251,8 @@ def on_complete_analysis() -> None:
         sections.append(
             (
                 "Correlation results",
-                format_result(
-                    "Correlation results",
-                    correlation_between_images(e_str, eb_str),
-                    percent=False,
+                format_correlation_result(
+                    "Correlation results", e_str, p_str, eb_str
                 ).replace("Correlation results\n", "", 1),
             )
         )
@@ -333,7 +303,7 @@ def on_complete_analysis() -> None:
             )
         )
 
-        set_result_text(format_complete_analysis_result(sections))
+        set_result_text(ui_state, format_complete_analysis_result(sections))
     except Exception as exc:
         messagebox.showerror(
             "Error", f"Analysis failed:\n{exc}\n\n{traceback.format_exc()}"
@@ -341,8 +311,7 @@ def on_complete_analysis() -> None:
 
 
 def on_analyse() -> None:
-    global selected_image_path
-    if selected_image_path is None:
+    if ui_state.selected_image_path is None:
         messagebox.showwarning(
             "No image", "Please choose or drop an encrypted image first."
         )
@@ -354,7 +323,7 @@ def on_analyse() -> None:
         metric = ANALYSIS_DEFAULT
 
     try:
-        encrypted_path = selected_image_path
+        encrypted_path = ui_state.selected_image_path
         if metric == "Entropy":
             # Convert to RGB numpy array so entropy() accepts it regardless
             # of source image mode (RGBA, P, etc.).
@@ -391,8 +360,9 @@ def on_analyse() -> None:
                 result = unified_average_changing_intensity(e_str, eb_str)
                 text = format_result("UACI results", result, percent=True)
             elif metric == "Correlation":
-                result = correlation_between_images(e_str, eb_str)
-                text = format_result("Correlation results", result, percent=False)
+                text = format_correlation_result(
+                    "Correlation results", e_str, p_str, eb_str
+                )
             elif metric == "PSNR":
                 result = peak_signal_to_noise_ratio(e_str, p_str)
                 text = format_result("PSNR results", result, percent=False)
@@ -405,7 +375,7 @@ def on_analyse() -> None:
             else:
                 raise ValueError(f"Unsupported analysis metric: {metric}")
 
-        set_result_text(text)
+        set_result_text(ui_state, text)
     except Exception as exc:
         messagebox.showerror(
             "Error", f"Analysis failed:\n{exc}\n\n{traceback.format_exc()}"
@@ -446,27 +416,8 @@ def build_analysis_menu(parent) -> None:
     analysis_buttons[ANALYSIS_DEFAULT].config(relief="sunken", bg="#cfe")
 
 
-def build_image_box(frame) -> tk.Canvas:
-    img_box = tk.Canvas(
-        frame, bg="#ffffff", relief="flat", width=400, height=240, highlightthickness=0
-    )
-    reset_placeholder(img_box, "Drop or choose an encrypted image")
-    img_box.pack(pady=(0, 8), anchor="n")
-
-    if DND_AVAILABLE:
-        try:
-            img_box.drop_target_register(DND_FILES)
-            img_box.dnd_bind("<<Drop>>", lambda e: on_drop(e, img_box))
-        except Exception:
-            pass
-
-    return img_box
-
-
 def build_ui() -> None:
-    global action_buttons_frame, result_frame
-
-    if DND_AVAILABLE:
+    if TkinterDnD is not None:
         root = TkinterDnD.Tk()
     else:
         root = tk.Tk()
@@ -484,43 +435,56 @@ def build_ui() -> None:
     content = tk.Frame(frame)
     content.pack(side="left", fill="both", expand=True)
 
-    img_box = build_image_box(content)
+    img_box = build_image_box(
+        content,
+        ui_state,
+        placeholder_text="Drop or choose an encrypted image",
+        extra_window_height=180,
+    )
 
     controls = tk.Frame(content)
     controls.pack()
 
+    base_dir = Path(__file__).resolve().parent
+    encrypted_dir = base_dir / "images" / "encrypted"
+
     choose_btn = tk.Button(
         controls,
         text="Choose encrypted image",
-        command=lambda: choose_image(img_box),
+        command=lambda: choose_image(
+            img_box,
+            ui_state,
+            title="Select encrypted image",
+            initialdir=str(encrypted_dir) if encrypted_dir.exists() else None,
+            extra_window_height=180,
+        ),
     )
     choose_btn.pack()
 
-    action_buttons_frame = tk.Frame(controls)
+    ui_state.action_buttons_frame = tk.Frame(controls)
 
     analyse_btn = tk.Button(
-        action_buttons_frame, text="Analyse", width=12, command=on_analyse
+        ui_state.action_buttons_frame, text="Analyse", width=12, command=on_analyse
     )
     analyse_btn.pack(pady=(6, 0))
 
     complete_btn = tk.Button(
-        action_buttons_frame,
+        ui_state.action_buttons_frame,
         text="Complete Analysis",
         width=16,
         command=on_complete_analysis,
     )
     complete_btn.pack(pady=(6, 0))
 
-    result_frame = tk.LabelFrame(content, text="Results")
+    ui_state.result_frame = tk.LabelFrame(content, text="Results")
 
-    global result_widget
-    result_container = tk.Frame(result_frame)
+    result_container = tk.Frame(ui_state.result_frame)
     result_container.pack(fill="both", expand=True)
 
     result_scrollbar = tk.Scrollbar(result_container, orient="vertical")
     result_scrollbar.pack(side="right", fill="y")
 
-    result_widget = tk.Text(
+    ui_state.result_widget = tk.Text(
         result_container,
         wrap="word",
         height=14,
@@ -530,17 +494,17 @@ def build_ui() -> None:
         relief="flat",
         borderwidth=0,
     )
-    result_widget.pack(side="left", fill="both", expand=True)
-    result_scrollbar.config(command=result_widget.yview)
-    result_widget.insert(
+    ui_state.result_widget.pack(side="left", fill="both", expand=True)
+    result_scrollbar.config(command=ui_state.result_widget.yview)
+    ui_state.result_widget.insert(
         "1.0",
         "Choose an encrypted image, then run NPCR, UACI, Correlation, MSE, PSNR, Entropy, Histogram, or Complete Analysis.",
     )
-    result_widget.config(state="disabled")
+    ui_state.result_widget.config(state="disabled")
 
     # Hide analysis controls until an image is selected.
-    action_buttons_frame.pack_forget()
-    result_frame.pack_forget()
+    ui_state.action_buttons_frame.pack_forget()
+    ui_state.result_frame.pack_forget()
 
     # Mode switch button to open encryption UI
     def switch_to_encrypt():
