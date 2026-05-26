@@ -17,12 +17,17 @@ from handleImage import (
     display_image,
     set_result_text,
 )
+from correlation import (
+    correlation_between_images,
+    diagonal_pixel_correlation,
+    horizontal_pixel_correlation,
+    vertical_pixel_correlation,
+)
 from nprc import number_of_pixel_change_rate
 from psnr import mean_squared_error, peak_signal_to_noise_ratio
 from uaci import unified_average_changing_intensity
 from analyse_ui import (
     format_complete_analysis_result,
-    format_correlation_result,
     format_entropy_result,
     format_histogram_result,
     format_result,
@@ -45,6 +50,63 @@ ALGORITHM_DEFAULT = "AES_CTR"
 ui_state = ImageUiState()
 ALGORITHM_SELECTION: tk.StringVar | None = None
 ALGORITHM_BUTTONS: dict[str, tk.Button] = {}
+RESULT_CATEGORY_DEFAULT = "All"
+RESULT_CATEGORY_SELECTION: tk.StringVar | None = None
+RESULT_CATEGORY_BUTTONS: dict[str, tk.Button] = {}
+LAST_ANALYSIS_SECTIONS: list[tuple[str, str, str]] = []
+
+
+def _set_category_button_state(active_name: str) -> None:
+    for name, button in RESULT_CATEGORY_BUTTONS.items():
+        if name == active_name:
+            button.config(relief="sunken", bg="#cfe")
+        else:
+            button.config(relief="raised", bg=button.master.cget("bg"))
+
+
+def _render_result_sections() -> None:
+    if RESULT_CATEGORY_SELECTION is None:
+        return
+
+    category = RESULT_CATEGORY_SELECTION.get()
+    if not LAST_ANALYSIS_SECTIONS:
+        set_result_text(ui_state, "")
+        return
+
+    if category == "All":
+        visible_sections = LAST_ANALYSIS_SECTIONS
+    else:
+        visible_sections = [
+            section for section in LAST_ANALYSIS_SECTIONS if section[0] == category
+        ]
+
+    if not visible_sections:
+        set_result_text(ui_state, f"No results available for {category}.")
+        return
+
+    set_result_text(
+        ui_state,
+        format_complete_analysis_result(
+            [(title, body) for _, title, body in visible_sections]
+        ),
+    )
+
+
+def _set_result_category(category_name: str) -> None:
+    if RESULT_CATEGORY_SELECTION is None:
+        return
+
+    RESULT_CATEGORY_SELECTION.set(category_name)
+    _set_category_button_state(category_name)
+    _render_result_sections()
+
+
+def _make_section(category: str, title: str, body: str) -> tuple[str, str, str]:
+    return (category, title, body)
+
+
+def _format_result_body(title: str, result: dict, percent: bool = False) -> str:
+    return format_result(title, result, percent=percent).replace(f"{title}\n", "", 1)
 
 
 def on_encrypt(canvas: tk.Canvas) -> Path | None:
@@ -123,67 +185,108 @@ def on_complete_analysis() -> None:
         arr = np.asarray(img, dtype=np.uint8)
 
         sections = [
-            (
-                "NPCR results",
-                format_result(
-                    "NPCR results",
-                    number_of_pixel_change_rate(e_str, eb_str),
-                    percent=True,
-                ).replace("NPCR results\n", "", 1),
+            _make_section(
+                "Encrypted",
+                "Horizontal correlation",
+                _format_result_body(
+                    "Horizontal correlation",
+                    horizontal_pixel_correlation(e_str),
+                ),
             ),
-            (
-                "UACI results",
-                format_result(
-                    "UACI results",
-                    unified_average_changing_intensity(e_str, eb_str),
-                    percent=True,
-                ).replace("UACI results\n", "", 1),
+            _make_section(
+                "Encrypted",
+                "Vertical correlation",
+                _format_result_body(
+                    "Vertical correlation",
+                    vertical_pixel_correlation(e_str),
+                ),
             ),
-            (
-                "Correlation results",
-                format_correlation_result(
-                    "Correlation results", e_str, p_str, eb_str
-                ).replace("Correlation results\n", "", 1),
+            _make_section(
+                "Encrypted",
+                "Diagonal correlation",
+                _format_result_body(
+                    "Diagonal correlation",
+                    diagonal_pixel_correlation(e_str),
+                ),
             ),
-            (
-                "MSE results",
-                format_result(
-                    "MSE results",
-                    mean_squared_error(e_str, p_str),
-                    percent=False,
-                ).replace("MSE results\n", "", 1),
-            ),
-            (
-                "PSNR results",
-                format_result(
-                    "PSNR results",
-                    peak_signal_to_noise_ratio(e_str, p_str),
-                    percent=False,
-                ).replace("PSNR results\n", "", 1),
-            ),
-            (
-                "SSIM results",
-                format_result(
-                    "SSIM results",
-                    structural_similarity(e_str, p_str),
-                    percent=False,
-                ).replace("SSIM results\n", "", 1),
-            ),
-            (
+            _make_section(
+                "Encrypted",
                 "Entropy results",
                 format_entropy_result(
                     "Entropy results", pixel_entropy_with_blocks(arr)
                 ).replace("Entropy results\n", "", 1),
             ),
-            (
+            _make_section(
+                "Encrypted",
                 "Histogram results",
                 format_histogram_result(
                     "Histogram results", image_histogram(arr)
                 ).replace("Histogram results\n", "", 1),
             ),
+            _make_section(
+                "Encrypted vs Encrypted",
+                "Encrypted vs Encrypted correlation",
+                _format_result_body(
+                    "Encrypted vs Encrypted correlation",
+                    correlation_between_images(e_str, eb_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Encrypted",
+                "NPCR results",
+                _format_result_body(
+                    "NPCR results",
+                    number_of_pixel_change_rate(e_str, eb_str),
+                    percent=True,
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Encrypted",
+                "UACI results",
+                _format_result_body(
+                    "UACI results",
+                    unified_average_changing_intensity(e_str, eb_str),
+                    percent=True,
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Plain",
+                "Encrypted vs Plain correlation",
+                _format_result_body(
+                    "Encrypted vs Plain correlation",
+                    correlation_between_images(e_str, p_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Plain",
+                "MSE results",
+                _format_result_body(
+                    "MSE results",
+                    mean_squared_error(e_str, p_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Plain",
+                "PSNR results",
+                _format_result_body(
+                    "PSNR results",
+                    peak_signal_to_noise_ratio(e_str, p_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Plain",
+                "SSIM results",
+                _format_result_body(
+                    "SSIM results",
+                    structural_similarity(e_str, p_str),
+                ),
+            ),
         ]
 
-        set_result_text(ui_state, format_complete_analysis_result(sections))
+        LAST_ANALYSIS_SECTIONS[:] = sections
+        _set_result_category(
+            RESULT_CATEGORY_SELECTION.get() if RESULT_CATEGORY_SELECTION else "All"
+        )
     except Exception as exc:
         messagebox.showerror(
             "Error", f"Analysis failed:\n{exc}\n\n{traceback.format_exc()}"
@@ -338,6 +441,35 @@ def build_algorithm_menu(parent) -> None:
     ALGORITHM_BUTTONS[ALGORITHM_DEFAULT].config(relief="sunken", bg="#cfe")
 
 
+def build_result_category_menu(parent) -> None:
+    global RESULT_CATEGORY_SELECTION, RESULT_CATEGORY_BUTTONS
+    RESULT_CATEGORY_SELECTION = tk.StringVar(value=RESULT_CATEGORY_DEFAULT)
+
+    ui_state.result_category_frame = tk.Frame(parent)
+
+    tk.Label(
+        ui_state.result_category_frame, text="Results", font=(None, 10, "bold")
+    ).pack(pady=(0, 6))
+
+    def make_btn(display_name: str) -> None:
+        btn = tk.Button(ui_state.result_category_frame, text=display_name, width=12)
+
+        def on_click() -> None:
+            _set_result_category(display_name)
+
+        btn.config(command=on_click)
+        btn.pack(pady=4, fill="x")
+        RESULT_CATEGORY_BUTTONS[display_name] = btn
+
+    make_btn("All")
+    make_btn("Encrypted")
+    make_btn("Encrypted vs Plain")
+    make_btn("Encrypted vs Encrypted")
+
+    _set_category_button_state(RESULT_CATEGORY_DEFAULT)
+    RESULT_CATEGORY_SELECTION.set(RESULT_CATEGORY_DEFAULT)
+
+
 def build_ui() -> None:
     # create root (use DnD root if available)
     if TkinterDnD is not None:
@@ -355,6 +487,8 @@ def build_ui() -> None:
     alg_sidebar = tk.Frame(frame)
     alg_sidebar.pack(side="left", fill="y", padx=(0, 8))
     build_algorithm_menu(alg_sidebar)
+    tk.Frame(alg_sidebar).pack(fill="both", expand=True)
+    build_result_category_menu(alg_sidebar)
 
     # Main content area (image + controls)
     content = tk.Frame(frame)
@@ -373,6 +507,8 @@ def build_ui() -> None:
     build_buttons(controls_frame, img_box)
 
     ui_state.result_frame = tk.LabelFrame(content, text="Results")
+    ui_state.result_frame.pack(side="left", fill="both", expand=True)
+
     result_container = tk.Frame(ui_state.result_frame)
     result_container.pack(fill="both", expand=True)
 

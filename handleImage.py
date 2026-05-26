@@ -25,6 +25,7 @@ class ImageUiState:
     selected_image_path: Path | None = None
     selected_image_tk: Any = None
     action_buttons_frame: tk.Frame | None = None
+    result_category_frame: tk.Frame | None = None
     result_frame: tk.LabelFrame | None = None
     result_widget: tk.Text | None = None
 
@@ -52,6 +53,11 @@ def display_image(
         and not state.action_buttons_frame.winfo_ismapped()
     ):
         state.action_buttons_frame.pack(pady=(6, 0))
+    if (
+        state.result_category_frame is not None
+        and not state.result_category_frame.winfo_ismapped()
+    ):
+        state.result_category_frame.pack(pady=(6, 0))
     if state.result_frame is not None and not state.result_frame.winfo_ismapped():
         state.result_frame.pack(fill="both", expand=True, pady=(8, 0))
 
