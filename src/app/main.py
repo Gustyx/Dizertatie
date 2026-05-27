@@ -1,8 +1,8 @@
-from encrypt_ui import build_ui
+from .ui import build_encrypt_ui
 
 
 def main() -> None:
-    build_ui()
+    build_encrypt_ui()
 
 
 if __name__ == "__main__":

@@ -6,43 +6,42 @@ from tkinter import messagebox
 from PIL import Image
 import numpy as np
 
-from imagePixels import add_one_bit_to_pixel
-from entropy import pixel_entropy_with_blocks
-from histogram import image_histogram
-from handleImage import (
-    DND_AVAILABLE,
+from ..utils import (
     ImageUiState,
     build_image_box,
     choose_image,
     display_image,
     set_result_text,
+    encrypt_image,
+    decrypt_image,
+    add_one_bit_to_pixel
 )
-from correlation import (
+from ..analysis_methods import (
     correlation_between_images,
     diagonal_pixel_correlation,
     horizontal_pixel_correlation,
     vertical_pixel_correlation,
+    pixel_entropy_with_blocks,
+    image_histogram,
+    number_of_pixel_change_rate,
+    mean_squared_error,
+    peak_signal_to_noise_ratio,
+    unified_average_changing_intensity,
+    structural_similarity
 )
-from nprc import number_of_pixel_change_rate
-from psnr import mean_squared_error, peak_signal_to_noise_ratio
-from uaci import unified_average_changing_intensity
-from analyse_ui import (
+from .analyse_ui import (
     format_complete_analysis_result,
     format_entropy_result,
     format_histogram_result,
     format_result,
+    build_analyse_ui
 )
-from ssim import structural_similarity
 
 try:
     from tkinterdnd2 import TkinterDnD
 except Exception:
     TkinterDnD = None
 
-try:
-    import enryptImage
-except Exception:
-    enryptImage = None
 
 KEY_PHRASE = "encryptionkey"
 ALGORITHM_DEFAULT = "AES_CTR"
@@ -54,6 +53,17 @@ RESULT_CATEGORY_DEFAULT = "All"
 RESULT_CATEGORY_SELECTION: tk.StringVar | None = None
 RESULT_CATEGORY_BUTTONS: dict[str, tk.Button] = {}
 LAST_ANALYSIS_SECTIONS: list[tuple[str, str, str]] = []
+
+
+base_dir = Path(__file__).resolve().parent.parent / "shared"
+encrypted_dir = base_dir / "images" / "encrypted"
+encrypted_dir.mkdir(parents=True, exist_ok=True)
+encrypted_plus_one_bit_dir = base_dir / "images" / "encrypted_plus_one_bit"
+encrypted_plus_one_bit_dir.mkdir(parents=True, exist_ok=True)
+nonce_dir = base_dir / "nonce_files"
+nonce_dir.mkdir(parents=True, exist_ok=True)
+decrypted_dir = base_dir / "images" / "decrypted"
+decrypted_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _set_category_button_state(active_name: str) -> None:
@@ -110,8 +120,8 @@ def _format_result_body(title: str, result: dict, percent: bool = False) -> str:
 
 
 def on_encrypt(canvas: tk.Canvas) -> Path | None:
-    if enryptImage is None:
-        messagebox.showerror("Error", "enryptImage module not available")
+    if encrypt_image is None:
+        messagebox.showerror("Error", "encrypt_image function not available")
         return None
     if ui_state.selected_image_path is None:
         messagebox.showwarning("No image", "Please choose or drop an image first.")
@@ -119,13 +129,6 @@ def on_encrypt(canvas: tk.Canvas) -> Path | None:
 
     try:
         input_path = ui_state.selected_image_path
-        base_dir = Path(__file__).resolve().parent
-        encrypted_dir = base_dir / "images" / "encrypted"
-        encrypted_dir.mkdir(parents=True, exist_ok=True)
-        encrypted_plus_one_bit_dir = base_dir / "images" / "encrypted_plus_one_bit"
-        encrypted_plus_one_bit_dir.mkdir(parents=True, exist_ok=True)
-        nonce_dir = base_dir / "nonce_files"
-        nonce_dir.mkdir(parents=True, exist_ok=True)
 
         # Determine algorithm from UI selector if available
         try:
@@ -136,14 +139,12 @@ def on_encrypt(canvas: tk.Canvas) -> Path | None:
         prefix = alg.lower()
         output_path = encrypted_dir / f"{prefix}_enc_{input_path.name}"
 
-        enryptImage.encrypt_image(input_path, output_path, KEY_PHRASE, algorithm=alg)
+        encrypt_image(input_path, output_path, KEY_PHRASE, algorithm=alg)
 
         input_path_2 = add_one_bit_to_pixel(input_path)
         output_path_2 = encrypted_plus_one_bit_dir / f"{prefix}_enc_{input_path.name}"
 
-        enryptImage.encrypt_image(
-            input_path_2, output_path_2, KEY_PHRASE, algorithm=alg
-        )
+        encrypt_image(input_path_2, output_path_2, KEY_PHRASE, algorithm=alg)
         # replace displayed image with encrypted output
         try:
             display_image(output_path, canvas, ui_state, extra_window_height=320)
@@ -301,8 +302,8 @@ def on_encrypt_and_analysis(canvas: tk.Canvas) -> None:
 
 
 def on_decrypt(canvas: tk.Canvas) -> None:
-    if enryptImage is None:
-        messagebox.showerror("Error", "enryptImage module not available")
+    if decrypt_image is None:
+        messagebox.showerror("Error", "decrypt_image function not available")
         return
     if ui_state.selected_image_path is None:
         messagebox.showwarning("No image", "Please choose or drop an image first.")
@@ -310,10 +311,6 @@ def on_decrypt(canvas: tk.Canvas) -> None:
 
     try:
         input_path = ui_state.selected_image_path
-
-        base_dir = Path(__file__).resolve().parent
-        decrypted_dir = base_dir / "images" / "decrypted"
-        decrypted_dir.mkdir(parents=True, exist_ok=True)
         # Decide algorithm from filename prefix if possible
         stem = input_path.stem
         if stem.lower().startswith("aes-cbc_") or stem.lower().startswith("aes_cbc_"):
@@ -350,9 +347,7 @@ def on_decrypt(canvas: tk.Canvas) -> None:
             output_name = f"dec_{output_name}"
         output_path = decrypted_dir / output_name
 
-        enryptImage.decrypt_image(
-            input_path, output_path, KEY_PHRASE, algorithm=detected_alg
-        )
+        decrypt_image(input_path, output_path, KEY_PHRASE, algorithm=detected_alg)
         # replace displayed image with decrypted output
         try:
             display_image(output_path, canvas, ui_state, extra_window_height=320)
@@ -372,7 +367,7 @@ def build_buttons(frame, img_box) -> None:
             img_box,
             ui_state,
             title="Select image",
-            initialdir=str(Path(__file__).resolve().parent / "images" / "plain"),
+            initialdir=str(base_dir / "images" / "plain"),
             extra_window_height=320,
         ),
     )
@@ -470,7 +465,7 @@ def build_result_category_menu(parent) -> None:
     RESULT_CATEGORY_SELECTION.set(RESULT_CATEGORY_DEFAULT)
 
 
-def build_ui() -> None:
+def build_encrypt_ui() -> None:
     # create root (use DnD root if available)
     if TkinterDnD is not None:
         root = TkinterDnD.Tk()
@@ -540,9 +535,7 @@ def build_ui() -> None:
         except Exception:
             pass
         try:
-            import analyse_ui as analyse_ui
-
-            analyse_ui.build_ui()
+            build_analyse_ui()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open Analyse UI:\n{e}")
 
@@ -557,7 +550,7 @@ def build_ui() -> None:
 
 
 def main() -> None:
-    build_ui()
+    build_encrypt_ui()
 
 
 if __name__ == "__main__":

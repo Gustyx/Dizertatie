@@ -6,19 +6,20 @@ from tkinter import messagebox
 from PIL import Image
 import numpy as np
 
-from correlation import (
+from ..analysis_methods import (
     correlation_between_images,
     diagonal_pixel_correlation,
     horizontal_pixel_correlation,
     vertical_pixel_correlation,
+    pixel_entropy_with_blocks,
+    image_histogram,
+    number_of_pixel_change_rate,
+    mean_squared_error,
+    peak_signal_to_noise_ratio,
+    unified_average_changing_intensity,
+    structural_similarity
 )
-from entropy import pixel_entropy_with_blocks
-from histogram import image_histogram
-from handleImage import ImageUiState, build_image_box, choose_image, set_result_text
-from nprc import number_of_pixel_change_rate
-from psnr import mean_squared_error, peak_signal_to_noise_ratio
-from uaci import unified_average_changing_intensity
-from ssim import structural_similarity
+from ..utils import ImageUiState, build_image_box, choose_image, set_result_text
 
 try:
     from tkinterdnd2 import TkinterDnD
@@ -416,7 +417,7 @@ def build_analysis_menu(parent) -> None:
     analysis_buttons[ANALYSIS_DEFAULT].config(relief="sunken", bg="#cfe")
 
 
-def build_ui() -> None:
+def build_analyse_ui() -> None:
     if TkinterDnD is not None:
         root = TkinterDnD.Tk()
     else:
@@ -513,9 +514,8 @@ def build_ui() -> None:
         except Exception:
             pass
         try:
-            import encrypt_ui as encrypt_ui
-
-            encrypt_ui.build_ui()
+            from .encrypt_ui import build_encrypt_ui
+            build_encrypt_ui()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open Encrypt UI:\n{e}")
 
@@ -530,7 +530,7 @@ def build_ui() -> None:
 
 
 def main() -> None:
-    build_ui()
+    build_analyse_ui()
 
 
 if __name__ == "__main__":
