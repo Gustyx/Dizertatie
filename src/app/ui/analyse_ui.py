@@ -27,10 +27,67 @@ except Exception:
     TkinterDnD = None
 
 ANALYSIS_DEFAULT = "NPCR"
+RESULT_CATEGORY_DEFAULT = "All"
 
 ui_state = ImageUiState()
 analysis_selection: tk.StringVar | None = None
 analysis_buttons: dict[str, tk.Button] = {}
+RESULT_CATEGORY_SELECTION: tk.StringVar | None = None
+RESULT_CATEGORY_BUTTONS: dict[str, tk.Button] = {}
+LAST_ANALYSIS_SECTIONS: list[tuple[str, str, str]] = []
+
+
+def _set_category_button_state(active_name: str) -> None:
+    for name, button in RESULT_CATEGORY_BUTTONS.items():
+        if name == active_name:
+            button.config(relief="sunken", bg="#cfe")
+        else:
+            button.config(relief="raised", bg=button.master.cget("bg"))
+
+
+def _render_result_sections() -> None:
+    if RESULT_CATEGORY_SELECTION is None:
+        return
+
+    category = RESULT_CATEGORY_SELECTION.get()
+    if not LAST_ANALYSIS_SECTIONS:
+        set_result_text(ui_state, "")
+        return
+
+    if category == "All":
+        visible_sections = LAST_ANALYSIS_SECTIONS
+    else:
+        visible_sections = [
+            section for section in LAST_ANALYSIS_SECTIONS if section[0] == category
+        ]
+
+    if not visible_sections:
+        set_result_text(ui_state, f"No results available for {category}.")
+        return
+
+    set_result_text(
+        ui_state,
+        format_complete_analysis_result(
+            [(title, body) for _, title, body in visible_sections]
+        ),
+    )
+
+
+def _set_result_category(category_name: str) -> None:
+    if RESULT_CATEGORY_SELECTION is None:
+        return
+
+    RESULT_CATEGORY_SELECTION.set(category_name)
+    _set_category_button_state(category_name)
+    _render_result_sections()
+
+
+def _make_section(category: str, title: str, body: str) -> tuple[str, str, str]:
+    return (category, title, body)
+
+
+def _format_result_body(title: str, result: dict, percent: bool = False) -> str:
+    return format_result(title, result, percent=percent).replace(f"{title}\n", "", 1)
 
 
 def format_result(title: str, result: dict, percent: bool = False) -> str:
@@ -228,83 +285,109 @@ def on_complete_analysis() -> None:
         img = Image.open(encrypted_path).convert("RGB")
         arr = np.asarray(img, dtype=np.uint8)
 
-        sections = []
-        sections.append(
-            (
-                "NPCR results",
-                format_result(
-                    "NPCR results",
-                    number_of_pixel_change_rate(e_str, eb_str),
-                    percent=True,
-                ).replace("NPCR results\n", "", 1),
-            )
-        )
-        sections.append(
-            (
-                "UACI results",
-                format_result(
-                    "UACI results",
-                    unified_average_changing_intensity(e_str, eb_str),
-                    percent=True,
-                ).replace("UACI results\n", "", 1),
-            )
-        )
-        sections.append(
-            (
-                "Correlation results",
-                format_correlation_result(
-                    "Correlation results", e_str, p_str, eb_str
-                ).replace("Correlation results\n", "", 1),
-            )
-        )
-        sections.append(
-            (
-                "MSE results",
-                format_result(
-                    "MSE results",
-                    mean_squared_error(e_str, p_str),
-                    percent=False,
-                ).replace("MSE results\n", "", 1),
-            )
-        )
-        sections.append(
-            (
-                "PSNR results",
-                format_result(
-                    "PSNR results",
-                    peak_signal_to_noise_ratio(e_str, p_str),
-                    percent=False,
-                ).replace("PSNR results\n", "", 1),
-            )
-        )
-        sections.append(
-            (
-                "SSIM results",
-                format_result(
-                    "SSIM results",
-                    structural_similarity(e_str, p_str),
-                    percent=False,
-                ).replace("SSIM results\n", "", 1),
-            )
-        )
-        sections.append(
-            (
+        sections = [
+            _make_section(
+                "Encrypted",
+                "Horizontal correlation",
+                _format_result_body(
+                    "Horizontal correlation",
+                    horizontal_pixel_correlation(e_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted",
+                "Vertical correlation",
+                _format_result_body(
+                    "Vertical correlation",
+                    vertical_pixel_correlation(e_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted",
+                "Diagonal correlation",
+                _format_result_body(
+                    "Diagonal correlation",
+                    diagonal_pixel_correlation(e_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted",
                 "Entropy results",
                 format_entropy_result(
                     "Entropy results", pixel_entropy_with_blocks(arr)
                 ).replace("Entropy results\n", "", 1),
-            )
-        )
-        sections.append(
-            (
+            ),
+            _make_section(
+                "Encrypted",
                 "Histogram results",
                 format_histogram_result(
                     "Histogram results", image_histogram(arr)
                 ).replace("Histogram results\n", "", 1),
-            )
-        )
+            ),
+            _make_section(
+                "Encrypted vs Encrypted",
+                "Encrypted vs Encrypted correlation",
+                _format_result_body(
+                    "Encrypted vs Encrypted correlation",
+                    correlation_between_images(e_str, eb_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Encrypted",
+                "NPCR results",
+                _format_result_body(
+                    "NPCR results",
+                    number_of_pixel_change_rate(e_str, eb_str),
+                    percent=True,
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Encrypted",
+                "UACI results",
+                _format_result_body(
+                    "UACI results",
+                    unified_average_changing_intensity(e_str, eb_str),
+                    percent=True,
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Plain",
+                "Encrypted vs Plain correlation",
+                _format_result_body(
+                    "Encrypted vs Plain correlation",
+                    correlation_between_images(e_str, p_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Plain",
+                "MSE results",
+                _format_result_body(
+                    "MSE results",
+                    mean_squared_error(e_str, p_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Plain",
+                "PSNR results",
+                _format_result_body(
+                    "PSNR results",
+                    peak_signal_to_noise_ratio(e_str, p_str),
+                ),
+            ),
+            _make_section(
+                "Encrypted vs Plain",
+                "SSIM results",
+                _format_result_body(
+                    "SSIM results",
+                    structural_similarity(e_str, p_str),
+                ),
+            ),
+        ]
 
-        set_result_text(ui_state, format_complete_analysis_result(sections))
+        LAST_ANALYSIS_SECTIONS[:] = sections
+        _set_result_category(
+            RESULT_CATEGORY_SELECTION.get() if RESULT_CATEGORY_SELECTION else "All"
+        )
     except Exception as exc:
         messagebox.showerror(
             "Error", f"Analysis failed:\n{exc}\n\n{traceback.format_exc()}"
@@ -331,12 +414,12 @@ def on_analyse() -> None:
             img = Image.open(encrypted_path).convert("RGB")
             arr = np.asarray(img, dtype=np.uint8)
             result = pixel_entropy_with_blocks(arr)
-            text = format_entropy_result("Entropy results", result)
+            text = format_entropy_result("", result)
         elif metric == "Histogram":
             img = Image.open(encrypted_path).convert("RGB")
             arr = np.asarray(img, dtype=np.uint8)
             result = image_histogram(arr)
-            text = format_histogram_result("Histogram results", result)
+            text = format_histogram_result("", result)
         else:
             encrypted_plus_one_bit_path = (
                 encrypted_path.parent.parent
@@ -356,27 +439,39 @@ def on_analyse() -> None:
 
             if metric == "NPCR":
                 result = number_of_pixel_change_rate(e_str, eb_str)
-                text = format_result("NPCR results", result, percent=True)
+                text = format_result("", result, percent=True)
             elif metric == "UACI":
                 result = unified_average_changing_intensity(e_str, eb_str)
-                text = format_result("UACI results", result, percent=True)
+                text = format_result("", result, percent=True)
             elif metric == "Correlation":
-                text = format_correlation_result(
-                    "Correlation results", e_str, p_str, eb_str
-                )
+                text = format_correlation_result("", e_str, p_str, eb_str)
             elif metric == "PSNR":
                 result = peak_signal_to_noise_ratio(e_str, p_str)
-                text = format_result("PSNR results", result, percent=False)
+                text = format_result("", result, percent=False)
             elif metric == "SSIM":
                 result = structural_similarity(e_str, p_str)
-                text = format_result("SSIM results", result, percent=False)
+                text = format_result("", result, percent=False)
             elif metric == "MSE":
                 result = mean_squared_error(e_str, p_str)
-                text = format_result("MSE results", result, percent=False)
+                text = format_result("", result, percent=False)
             else:
                 raise ValueError(f"Unsupported analysis metric: {metric}")
 
-        set_result_text(ui_state, text)
+        category = {
+            "NPCR": "Encrypted vs Encrypted",
+            "UACI": "Encrypted vs Encrypted",
+            "Correlation": "Encrypted vs Plain",
+            "MSE": "Encrypted vs Plain",
+            "PSNR": "Encrypted vs Plain",
+            "SSIM": "Encrypted vs Plain",
+            "Entropy": "Encrypted",
+            "Histogram": "Encrypted",
+        }.get(metric, "All")
+
+        LAST_ANALYSIS_SECTIONS[:] = [_make_section(category, f"{metric} results", text)]
+        _set_result_category(
+            RESULT_CATEGORY_SELECTION.get() if RESULT_CATEGORY_SELECTION else "All"
+        )
     except Exception as exc:
         messagebox.showerror(
             "Error", f"Analysis failed:\n{exc}\n\n{traceback.format_exc()}"
@@ -417,6 +512,35 @@ def build_analysis_menu(parent) -> None:
     analysis_buttons[ANALYSIS_DEFAULT].config(relief="sunken", bg="#cfe")
 
 
+def build_result_category_menu(parent) -> None:
+    global RESULT_CATEGORY_SELECTION, RESULT_CATEGORY_BUTTONS
+    RESULT_CATEGORY_SELECTION = tk.StringVar(value=RESULT_CATEGORY_DEFAULT)
+
+    ui_state.result_category_frame = tk.Frame(parent)
+
+    tk.Label(
+        ui_state.result_category_frame, text="Results", font=(None, 10, "bold")
+    ).pack(pady=(0, 6))
+
+    def make_btn(display_name: str) -> None:
+        btn = tk.Button(ui_state.result_category_frame, text=display_name, width=12)
+
+        def on_click() -> None:
+            _set_result_category(display_name)
+
+        btn.config(command=on_click)
+        btn.pack(pady=4, fill="x")
+        RESULT_CATEGORY_BUTTONS[display_name] = btn
+
+    make_btn("All")
+    make_btn("Encrypted")
+    make_btn("Encrypted vs Plain")
+    make_btn("Encrypted vs Encrypted")
+
+    _set_category_button_state(RESULT_CATEGORY_DEFAULT)
+    RESULT_CATEGORY_SELECTION.set(RESULT_CATEGORY_DEFAULT)
+
+
 def build_analyse_ui() -> None:
     if TkinterDnD is not None:
         root = TkinterDnD.Tk()
@@ -424,7 +548,7 @@ def build_analyse_ui() -> None:
         root = tk.Tk()
 
     root.title("Image Analysis")
-    root.minsize(520, 520)
+    root.minsize(320, 240)
 
     frame = tk.Frame(root, padx=10, pady=10)
     frame.pack(expand=True, fill="both")
@@ -432,6 +556,8 @@ def build_analyse_ui() -> None:
     sidebar = tk.Frame(frame)
     sidebar.pack(side="left", fill="y", padx=(0, 8))
     build_analysis_menu(sidebar)
+    tk.Frame(sidebar).pack(fill="both", expand=True)
+    build_result_category_menu(sidebar)
 
     content = tk.Frame(frame)
     content.pack(side="left", fill="both", expand=True)
@@ -502,6 +628,8 @@ def build_analyse_ui() -> None:
         "Choose an encrypted image, then run NPCR, UACI, Correlation, MSE, PSNR, Entropy, Histogram, or Complete Analysis.",
     )
     ui_state.result_widget.config(state="disabled")
+
+    ui_state.result_category_frame.pack_forget()
 
     # Hide analysis controls until an image is selected.
     ui_state.action_buttons_frame.pack_forget()
