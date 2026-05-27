@@ -1,0 +1,6 @@
+{
+    "python.terminal.launchArgs": [
+        "-m",
+        "app.main"
+    ]
+}
