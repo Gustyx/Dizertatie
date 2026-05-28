@@ -14,7 +14,7 @@ from ..utils import (
     set_result_text,
     encrypt_image,
     decrypt_image,
-    add_one_bit_to_pixel
+    add_one_bit_to_pixel,
 )
 from ..analysis_methods import (
     correlation_between_images,
@@ -27,14 +27,14 @@ from ..analysis_methods import (
     mean_squared_error,
     peak_signal_to_noise_ratio,
     unified_average_changing_intensity,
-    structural_similarity
+    structural_similarity,
 )
 from .analyse_ui import (
     format_complete_analysis_result,
     format_entropy_result,
     format_histogram_result,
     format_result,
-    build_analyse_ui
+    build_analyse_ui,
 )
 
 try:
@@ -333,6 +333,14 @@ def on_decrypt(canvas: tk.Canvas) -> None:
             "custom_aes_"
         ):
             detected_alg = "CUSTOM_AES"
+        elif stem.lower().startswith("logistic-map_") or stem.lower().startswith(
+            "logistic_map_"
+        ):
+            detected_alg = "LOGISTIC_MAP"
+        elif stem.lower().startswith("henon-map_") or stem.lower().startswith(
+            "henon_map_"
+        ):
+            detected_alg = "HENON_MAP"
         else:
             try:
                 detected_alg = ALGORITHM_SELECTION.get()
@@ -421,6 +429,8 @@ def build_algorithm_menu(parent) -> None:
     make_btn("AES_CCM")
     make_btn("DES")
     make_btn("Custom_AES")
+    make_btn("Logistic_Map")
+    make_btn("Henon_Map")
     make_btn("ChaCha20")
 
     # initialize visuals

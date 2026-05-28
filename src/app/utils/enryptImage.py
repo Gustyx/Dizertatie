@@ -16,8 +16,12 @@ from ..algorithms import (
     chacha20_decrypt_bytes,
     apply_custom_aes_decrypt,
     apply_custom_aes_encrypt,
+    apply_logistic_map_decrypt,
+    apply_logistic_map_encrypt,
+    apply_henon_map_decrypt,
+    apply_henon_map_encrypt,
     derive_des_key,
-    des_ctr_transform 
+    des_ctr_transform,
 )
 from .imagePixels import extract_pixels, reconstruct_image
 
@@ -148,6 +152,21 @@ def encrypt_image(
             )
 
             # Custom AES does not use a nonce in this implementation; write an empty nonce
+            nonce = b""
+        case "LOGISTIC_MAP":
+            # Logistic map chaotic encryption uses the key phrase directly.
+            flat_pixels = pixels.flatten().tolist()
+            transformed_list = apply_logistic_map_encrypt(flat_pixels, key_phrase)
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
+                pixels.shape
+            )
+            nonce = b""
+        case "HENON_MAP":
+            flat_pixels = pixels.flatten().tolist()
+            transformed_list = apply_henon_map_encrypt(flat_pixels, key_phrase)
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
+                pixels.shape
+            )
             nonce = b""
         case "AES_CBC":
             # AES-CBC: store IV in nonce file and full ciphertext in a .cbc file.
@@ -329,6 +348,20 @@ def decrypt_image(
             transformed_list = apply_custom_aes_decrypt(flat_pixels, key)
 
             # Convert back to a numpy array with original shape and dtype for reconstruction
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
+                pixels.shape
+            )
+
+        case "LOGISTIC_MAP":
+            flat_pixels = pixels.flatten().tolist()
+            transformed_list = apply_logistic_map_decrypt(flat_pixels, key_phrase)
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
+                pixels.shape
+            )
+
+        case "HENON_MAP":
+            flat_pixels = pixels.flatten().tolist()
+            transformed_list = apply_henon_map_decrypt(flat_pixels, key_phrase)
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(
                 pixels.shape
             )
