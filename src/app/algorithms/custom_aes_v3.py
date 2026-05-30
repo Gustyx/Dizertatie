@@ -206,7 +206,7 @@ def inv_mix_columns_and_add_round_key(mat1, mat2, keys):
     return mixed
 
 
-def aes_encrypt(block: List[int], round_keys, round_number):
+def aes_encrypt(block: List[int], round_keys):
     state = [[0] * 4 for _ in range(4)]
     cipher = []
 
@@ -214,23 +214,23 @@ def aes_encrypt(block: List[int], round_keys, round_number):
         for j in range(4):
             state[j][i] = block[i * 4 + j]
 
-    if round_number == 0:
-        state = add_round_key(state, round_keys[:4])
+    state = add_round_key(state, round_keys[:4])
 
-    state = sub_bytes_and_shift_rows(state)
+    for round in range(11):
+        state = sub_bytes_and_shift_rows(state)
 
-    current_round_keys = round_keys[
-        round_number * 4:(round_number + 1) * 4
-    ]
+        current_round_keys = round_keys[
+            round * 4:(round + 1) * 4
+        ]
 
-    if round_number < 10:
-        state = mix_columns_and_add_round_key(
-            fixed_matrix,
-            state,
-            current_round_keys
-        )
-    else:
-        state = add_round_key(state, current_round_keys)
+        if round < 10:
+            state = mix_columns_and_add_round_key(
+                fixed_matrix,
+                state,
+                current_round_keys
+            )
+        else:
+            state = add_round_key(state, current_round_keys)
 
     for i in range(4):
         for j in range(4):
@@ -239,7 +239,7 @@ def aes_encrypt(block: List[int], round_keys, round_number):
     return cipher
 
 
-def aes_decrypt(block: List[int], round_keys, round_number):
+def aes_decrypt(block: List[int], round_keys):
     state = [[0] * 4 for _ in range(4)]
     plain = []
 
@@ -247,23 +247,24 @@ def aes_decrypt(block: List[int], round_keys, round_number):
         for j in range(4):
             state[j][i] = block[i * 4 + j]
 
-    current_round_keys = round_keys[
-        round_number * 4:(round_number + 1) * 4
-    ]
+    for round in range(11):
+        current_round_keys = round_keys[
+            round * 4:(round + 1) * 4
+        ]
 
-    if round_number < 10:
-        state = inv_mix_columns_and_add_round_key(
-            inv_fixed_matrix,
-            state,
-            current_round_keys
-        )
-    else:
-        state = add_round_key(state, current_round_keys)
+        if round < 10:
+            state = inv_mix_columns_and_add_round_key(
+                inv_fixed_matrix,
+                state,
+                current_round_keys
+            )
+        else:
+            state = add_round_key(state, current_round_keys)
 
-    state = inv_sub_bytes_and_shift_rows(state)
+        state = inv_sub_bytes_and_shift_rows(state)
 
-    if round_number == 0:
-        state = add_round_key(state, round_keys[:4])
+        if round == 0:
+            state = add_round_key(state, round_keys[:4])
 
     for i in range(4):
         for j in range(4):
@@ -274,29 +275,7 @@ def aes_decrypt(block: List[int], round_keys, round_number):
 
 def encrypt_pixels(pixels: List[int], round_keys) -> List[int]:
     encrypted_pixels = []
-    round_number = 0
     pixel_block = []
-
-    # for i in range(0, len(pixels)):
-    #     if (i + 1) % 4 != 0:
-    #         pixel_block.append(pixels[i])
-
-    #     if len(pixel_block) == 16:
-    #         encrypted_block = aes_encrypt(pixel_block, round_keys, round_number)
-
-    #         for j in range(16):
-    #             encrypted_pixels.append(encrypted_block[j])
-
-    #             if (len(encrypted_pixels) + 1) % 4 == 0:
-    #                 encrypted_pixels.append(255)
-
-    #         pixel_block = []
-    #         round_number = (round_number + 1) % 11
-
-    # for i in range(len(pixel_block)):
-    #     encrypted_pixels.append(pixel_block[i])
-    #     if (len(encrypted_pixels) + 1) % 4 == 0:
-    #         encrypted_pixels.append(255)
 
     for start in range(0, len(pixels), 16):
         pixel_block = pixels[start:start + 16]
@@ -304,39 +283,15 @@ def encrypt_pixels(pixels: List[int], round_keys) -> List[int]:
         if len(pixel_block) < 16:
             pixel_block = pixel_block + [0] * (16 - len(pixel_block))
 
-        encrypted_block = aes_encrypt(pixel_block, round_keys, round_number)
+        encrypted_block = aes_encrypt(pixel_block, round_keys)
         encrypted_pixels.extend(encrypted_block[: len(pixels[start:start + 16])])
-
-        round_number = (round_number + 1) % 11
 
     return encrypted_pixels
 
 
 def decrypt_pixels(pixels: List[int], round_keys) -> List[int]:
     decrypted_pixels = []
-    round_number = 0
     pixel_block = []
-
-    # for i in range(0, len(pixels)):
-    #     if (i + 1) % 4 != 0:
-    #         pixel_block.append(pixels[i])
-
-    #     if len(pixel_block) == 16:
-    #         decrypted_block = aes_decrypt(pixel_block, round_keys, round_number)
-
-    #         for j in range(16):
-    #             decrypted_pixels.append(decrypted_block[j])
-
-    #             if (len(decrypted_pixels) + 1) % 4 == 0:
-    #                 decrypted_pixels.append(255)
-
-    #         pixel_block = []
-    #         round_number = (round_number + 1) % 11
-
-    # for i in range(len(pixel_block)):
-    #     decrypted_pixels.append(pixel_block[i])
-    #     if (len(decrypted_pixels) + 1) % 4 == 0:
-    #         decrypted_pixels.append(255)
 
     for start in range(0, len(pixels), 16):
         pixel_block = pixels[start:start + 16]
@@ -344,10 +299,8 @@ def decrypt_pixels(pixels: List[int], round_keys) -> List[int]:
         if len(pixel_block) < 16:
             pixel_block = pixel_block + [0] * (16 - len(pixel_block))
 
-        decrypted_block = aes_decrypt(pixel_block, round_keys, round_number)
+        decrypted_block = aes_decrypt(pixel_block, round_keys)
         decrypted_pixels.extend(decrypted_block[: len(pixels[start:start + 16])])
-
-        round_number = (round_number + 1) % 11
 
     return decrypted_pixels
 
@@ -355,21 +308,19 @@ def decrypt_pixels(pixels: List[int], round_keys) -> List[int]:
 def apply_custom_aes_encrypt(pixels: List[int], key: str) -> List[int]:
     round_keys = generate_round_keys(key)
     encrypted_pixels = encrypt_pixels(pixels, round_keys)
+
     return encrypted_pixels
 
 
 def apply_custom_aes_decrypt(pixels: List[int], key: str) -> List[int]:
     round_keys = generate_round_keys(key)
     decrypted_pixels = decrypt_pixels(pixels, round_keys)
+
     return decrypted_pixels
 
 
 if __name__ == "__main__":
-    enc = apply_custom_aes_encrypt([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-                                       17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-                                       33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
-                                       49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], "encryptionkey123")
-    print("Encrypted:", len(enc), enc)
+    enc = apply_custom_aes_encrypt([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], "encryptionkey123")
+    print("Encrypted:", enc)
     dec = apply_custom_aes_decrypt(enc, "encryptionkey123")
-    print("Decrypted:", len(dec), dec)
-    pass
+    print("Decrypted:", dec)

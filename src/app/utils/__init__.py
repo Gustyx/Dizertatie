@@ -4,7 +4,7 @@ from .handleImage import (
     build_image_box,
     choose_image,
     display_image,
-    set_result_text,
+    set_result_text
 )
 from .enryptImage import encrypt_image, decrypt_image
-from .imagePixels import add_one_bit_to_pixel
+from .imagePixels import add_one_bit_to_pixel, extract_pixels

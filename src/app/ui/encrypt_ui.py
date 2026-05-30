@@ -3,7 +3,6 @@ import traceback
 import tkinter as tk
 from tkinter import messagebox
 
-from PIL import Image
 import numpy as np
 
 from ..utils import (
@@ -15,6 +14,7 @@ from ..utils import (
     encrypt_image,
     decrypt_image,
     add_one_bit_to_pixel,
+    extract_pixels,
 )
 from ..analysis_methods import (
     correlation_between_images,
@@ -182,8 +182,8 @@ def on_complete_analysis() -> None:
         eb_str = str(encrypted_plus_one_bit_path)
         p_str = str(plain_path)
 
-        img = Image.open(encrypted_path).convert("RGB")
-        arr = np.asarray(img, dtype=np.uint8)
+        arr, _ = extract_pixels(encrypted_path)
+        arr = np.asarray(arr, dtype=np.uint8)
 
         sections = [
             _make_section(
@@ -221,7 +221,7 @@ def on_complete_analysis() -> None:
                 "Encrypted",
                 "Histogram results",
                 format_histogram_result(
-                    "Histogram results", image_histogram(arr)
+                    "Histogram results", image_histogram(e_str)
                 ).replace("Histogram results\n", "", 1),
             ),
             _make_section(

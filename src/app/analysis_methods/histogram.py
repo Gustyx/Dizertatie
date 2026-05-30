@@ -4,14 +4,39 @@ from pathlib import Path
 import argparse
 
 import numpy as np
+
 from PIL import Image
+
+from ..utils.imagePixels import extract_preview_pixels
+
+MAX_ANALYSIS_SIZE = (2048, 2048)
+
+
+def _downsample_array(img: np.ndarray) -> np.ndarray:
+    if img.ndim == 2 and max(img.shape) > MAX_ANALYSIS_SIZE[0]:
+        preview = Image.fromarray(img)
+        preview.thumbnail(MAX_ANALYSIS_SIZE)
+        return np.asarray(preview, dtype=np.uint8)
+
+    if img.ndim == 3 and max(img.shape[:2]) > MAX_ANALYSIS_SIZE[0]:
+        preview = Image.fromarray(img[..., :3].astype(np.uint8))
+        preview.thumbnail(MAX_ANALYSIS_SIZE)
+        return np.asarray(preview, dtype=np.uint8)
+
+    return img
 
 
 def _load_image(image):
     if isinstance(image, (str, Path)):
-        return np.array(Image.open(image).convert("RGB"), dtype=np.uint8)
+        pixels, _ = extract_preview_pixels(Path(image), max_size=MAX_ANALYSIS_SIZE)
+        arr = np.asarray(pixels, dtype=np.uint8)
+        if arr.ndim == 2:
+            return np.repeat(arr[..., None], 3, axis=2)
+        if arr.ndim == 3 and arr.shape[2] >= 3:
+            return arr[..., :3]
+        raise ValueError("Image must be grayscale or RGB")
 
-    img = np.asarray(image)
+    img = _downsample_array(np.asarray(image))
     if img.ndim == 2:
         return img.astype(np.uint8, copy=False)
     if img.ndim == 3 and img.shape[2] >= 3:

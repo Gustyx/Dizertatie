@@ -1,11 +1,21 @@
-from PIL import Image
+from pathlib import Path
 import numpy as np
 import argparse
 
+from ..utils.imagePixels import extract_preview_pixels
+
+MAX_ANALYSIS_SIZE = (2048, 2048)
+
 
 def _load_image(path):
-    img = Image.open(path)
-    return np.array(img.convert("RGB"), dtype=np.uint8)
+    pixels, _ = extract_preview_pixels(Path(path), max_size=MAX_ANALYSIS_SIZE)
+    arr = np.asarray(pixels, dtype=np.uint8)
+
+    if arr.ndim == 2:
+        return np.repeat(arr[..., None], 3, axis=2)
+    if arr.ndim == 3 and arr.shape[2] >= 3:
+        return arr[..., :3]
+    raise ValueError("Image must be grayscale or RGB")
 
 
 def _pearson(x, y):

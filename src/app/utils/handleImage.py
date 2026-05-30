@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 import tkinter as tk
 from tkinter import filedialog
+from contextlib import contextmanager
 
 from PIL import Image, ImageTk
 
@@ -18,6 +19,17 @@ except Exception:
 
 
 IMAGE_FILETYPES = [("Images", "*.png *.jpg *.jpeg *.bmp *.tiff *.gif")]
+
+
+@contextmanager
+def _allow_large_images():
+    """Temporarily disable PIL's decompression bomb protection for preview loading."""
+    previous_limit = Image.MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = None
+    try:
+        yield
+    finally:
+        Image.MAX_IMAGE_PIXELS = previous_limit
 
 
 @dataclass
@@ -37,9 +49,12 @@ def display_image(
     max_size: tuple[int, int] = (800, 600),
     extra_window_height: int = 180,
 ) -> None:
-    img = Image.open(path)
-    img.thumbnail(max_size)
-    state.selected_image_tk = ImageTk.PhotoImage(img)
+    with _allow_large_images():
+        with Image.open(path) as img:
+            img.thumbnail(max_size)
+            preview = img.copy()
+
+    state.selected_image_tk = ImageTk.PhotoImage(preview)
 
     canvas.delete("all")
     canvas.config(

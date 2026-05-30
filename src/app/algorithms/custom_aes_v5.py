@@ -1,0 +1,506 @@
+from datetime import datetime
+from typing import List
+
+import numpy as np
+
+try:
+    from numba import njit
+    _NUMBA = True
+except ImportError:
+    _NUMBA = False
+    def njit(fn=None, **kw):
+        return (lambda f: f)(fn) if fn else (lambda f: f)
+
+
+s_box = [
+    [0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76],
+    [0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0],
+    [0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15],
+    [0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75],
+    [0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa0,0x52,0x3b,0xd6,0xb3,0x29,0xe3,0x2f,0x84],
+    [0x53,0xd1,0x00,0xed,0x20,0xfc,0xb1,0x5b,0x6a,0xcb,0xbe,0x39,0x4a,0x4c,0x58,0xcf],
+    [0xd0,0xef,0xaa,0xfb,0x43,0x4d,0x33,0x85,0x45,0xf9,0x02,0x7f,0x50,0x3c,0x9f,0xa8],
+    [0x51,0xa3,0x40,0x8f,0x92,0x9d,0x38,0xf5,0xbc,0xb6,0xda,0x21,0x10,0xff,0xf3,0xd2],
+    [0xcd,0x0c,0x13,0xec,0x5f,0x97,0x44,0x17,0xc4,0xa7,0x7e,0x3d,0x64,0x5d,0x19,0x73],
+    [0x60,0x81,0x4f,0xdc,0x22,0x2a,0x90,0x88,0x46,0xee,0xb8,0x14,0xde,0x5e,0x0b,0xdb],
+    [0xe0,0x32,0x3a,0x0a,0x49,0x06,0x24,0x5c,0xc2,0xd3,0xac,0x62,0x91,0x95,0xe4,0x79],
+    [0xe7,0xc8,0x37,0x6d,0x8d,0xd5,0x4e,0xa9,0x6c,0x56,0xf4,0xea,0x65,0x7a,0xae,0x08],
+    [0xba,0x78,0x25,0x2e,0x1c,0xa6,0xb4,0xc6,0xe8,0xdd,0x74,0x1f,0x4b,0xbd,0x8b,0x8a],
+    [0x70,0x3e,0xb5,0x66,0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e],
+    [0xe1,0xf8,0x98,0x11,0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf],
+    [0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16],
+]
+
+inv_s_box = [
+    [0x52,0x09,0x6a,0xd5,0x30,0x36,0xa5,0x38,0xbf,0x40,0xa3,0x9e,0x81,0xf3,0xd7,0xfb],
+    [0x7c,0xe3,0x39,0x82,0x9b,0x2f,0xff,0x87,0x34,0x8e,0x43,0x44,0xc4,0xde,0xe9,0xcb],
+    [0x54,0x7b,0x94,0x32,0xa6,0xc2,0x23,0x3d,0xee,0x4c,0x95,0x0b,0x42,0xfa,0xc3,0x4e],
+    [0x08,0x2e,0xa1,0x66,0x28,0xd9,0x24,0xb2,0x76,0x5b,0xa2,0x49,0x6d,0x8b,0xd1,0x25],
+    [0x72,0xf8,0xf6,0x64,0x86,0x68,0x98,0x16,0xd4,0xa4,0x5c,0xcc,0x5d,0x65,0xb6,0x92],
+    [0x6c,0x70,0x48,0x50,0xfd,0xed,0xb9,0xda,0x5e,0x15,0x46,0x57,0xa7,0x8d,0x9d,0x84],
+    [0x90,0xd8,0xab,0x00,0x8c,0xbc,0xd3,0x0a,0xf7,0xe4,0x58,0x05,0xb8,0xb3,0x45,0x06],
+    [0xd0,0x2c,0x1e,0x8f,0xca,0x3f,0x0f,0x02,0xc1,0xaf,0xbd,0x03,0x01,0x13,0x8a,0x6b],
+    [0x3a,0x91,0x11,0x41,0x4f,0x67,0xdc,0xea,0x97,0xf2,0xcf,0xce,0xf0,0xb4,0xe6,0x73],
+    [0x96,0xac,0x74,0x22,0xe7,0xad,0x35,0x85,0xe2,0xf9,0x37,0xe8,0x1c,0x75,0xdf,0x6e],
+    [0x47,0xf1,0x1a,0x71,0x1d,0x29,0xc5,0x89,0x6f,0xb7,0x62,0x0e,0xaa,0x18,0xbe,0x1b],
+    [0xfc,0x56,0x3e,0x4b,0xc6,0xd2,0x79,0x20,0x9a,0xdb,0xc0,0xfe,0x78,0xcd,0x5a,0xf4],
+    [0x1f,0xdd,0xa8,0x33,0x88,0x07,0xc7,0x31,0xb1,0x12,0x10,0x59,0x27,0x80,0xec,0x5f],
+    [0x60,0x51,0x7f,0xa9,0x19,0xb5,0x4a,0x0d,0x2d,0xe5,0x7a,0x9f,0x93,0xc9,0x9c,0xef],
+    [0xa0,0xe0,0x3b,0x4d,0xae,0x2a,0xf5,0xb0,0xc8,0xeb,0xbb,0x3c,0x83,0x53,0x99,0x61],
+    [0x17,0x2b,0x04,0x7e,0xba,0x77,0xd6,0x26,0xe1,0x69,0x14,0x63,0x55,0x21,0x0c,0x7d],
+]
+
+fixed_matrix = [
+    [0x02, 0x03, 0x01, 0x01],
+    [0x01, 0x02, 0x03, 0x01],
+    [0x01, 0x01, 0x02, 0x03],
+    [0x03, 0x01, 0x01, 0x02],
+]
+
+inv_fixed_matrix = [
+  [0x0e, 0x0b, 0x0d, 0x09],
+  [0x09, 0x0e, 0x0b, 0x0d],
+  [0x0d, 0x09, 0x0e, 0x0b],
+  [0x0b, 0x0d, 0x09, 0x0e],
+]
+
+round_constants = [
+    [0x01,0x00,0x00,0x00],
+    [0x02,0x00,0x00,0x00],
+    [0x04,0x00,0x00,0x00],
+    [0x08,0x00,0x00,0x00],
+    [0x10,0x00,0x00,0x00],
+    [0x20,0x00,0x00,0x00],
+    [0x40,0x00,0x00,0x00],
+    [0x80,0x00,0x00,0x00],
+    [0x1B,0x00,0x00,0x00],
+    [0x36,0x00,0x00,0x00],
+]
+
+# ---------------------------------------------------------------------------
+# Flat NumPy versions of the lookup tables — required for Numba JIT
+# Numba cannot index into Python lists-of-lists; 1-D uint8 arrays work fine.
+# ---------------------------------------------------------------------------
+
+_S_BOX_FLAT    = np.array([v for row in s_box        for v in row], dtype=np.uint8)
+_INV_S_BOX_FLAT= np.array([v for row in inv_s_box    for v in row], dtype=np.uint8)
+_FIXED_FLAT    = np.array([v for row in fixed_matrix     for v in row], dtype=np.uint8)
+_INV_FIXED_FLAT= np.array([v for row in inv_fixed_matrix for v in row], dtype=np.uint8)
+_RCON_FLAT     = np.array([row[0] for row in round_constants], dtype=np.uint8)
+
+# ---------------------------------------------------------------------------
+# Numba-JIT hot functions
+# All operate on flat uint8 arrays; no Python objects or list comprehensions.
+# ---------------------------------------------------------------------------
+
+@njit
+def _galois_multiplication(a, b):
+    p = np.uint8(0)
+    a = np.uint8(a)
+    b = np.uint8(b)
+    while b:
+        if b & np.uint8(1):
+            p ^= a
+        high_bit_set = a & np.uint8(0x80)
+        a = np.uint8((np.uint16(a) << np.uint16(1)) & np.uint16(0xFF))
+        if high_bit_set:
+            a ^= np.uint8(0x1B)
+        b >>= np.uint8(1)
+    return np.uint8(p)
+
+
+@njit
+def _aes_encrypt_block(block, s_box_flat, fixed_flat, rcon_flat, inv_s_box_flat,
+                        inv_fixed_flat, round_keys_flat):
+    """
+    Encrypt a single 16-element uint8 block.
+    round_keys_flat: flattened (44, 4) key schedule → 176 bytes, row-major.
+    """
+    # Load state (column-major)
+    state = np.zeros((4, 4), dtype=np.uint8)
+    for i in range(4):
+        for j in range(4):
+            state[j, i] = block[i * 4 + j]
+
+    # AddRoundKey — round 0
+    for i in range(4):
+        for j in range(4):
+            state[i, j] ^= round_keys_flat[(j * 4 + i)]   # W[j], byte i
+
+    # Rounds 1–10
+    for rnd in range(1, 11):
+        # SubBytes + ShiftRows combined
+        new_state = np.zeros((4, 4), dtype=np.uint8)
+        for i in range(4):
+            for j in range(4):
+                sb = s_box_flat[state[i, j]]
+                new_state[i, (j - i) % 4] = sb
+        state = new_state
+
+        base = rnd * 4   # first word index for this round
+
+        if rnd < 10:
+            # MixColumns + AddRoundKey
+            mixed = np.zeros((4, 4), dtype=np.uint8)
+            for i in range(4):
+                for j in range(4):
+                    mixed[i, j] = (
+                        _galois_multiplication(fixed_flat[i * 4 + 0], state[0, j]) ^
+                        _galois_multiplication(fixed_flat[i * 4 + 1], state[1, j]) ^
+                        _galois_multiplication(fixed_flat[i * 4 + 2], state[2, j]) ^
+                        _galois_multiplication(fixed_flat[i * 4 + 3], state[3, j]) ^
+                        round_keys_flat[(base + j) * 4 + i]
+                    )
+            state = mixed
+        else:
+            # Final round: AddRoundKey only
+            for i in range(4):
+                for j in range(4):
+                    state[i, j] ^= round_keys_flat[(base + j) * 4 + i]
+
+    # Flatten output (column-major)
+    out = np.empty(16, dtype=np.uint8)
+    for i in range(4):
+        for j in range(4):
+            out[i * 4 + j] = state[j, i]
+    return out
+
+
+@njit
+def _aes_decrypt_block(block, inv_s_box_flat, inv_fixed_flat, round_keys_flat):
+    """
+    Decrypt a single 16-element uint8 block.
+    round_keys_flat: same layout as encrypt, keys are reversed inside.
+    """
+    state = np.zeros((4, 4), dtype=np.uint8)
+    for i in range(4):
+        for j in range(4):
+            state[j, i] = block[i * 4 + j]
+
+    # Reversed key schedule: round 10 first
+    def _rk(rnd, col, row):
+        base = rnd * 4
+        return round_keys_flat[(base + col) * 4 + row]
+
+    # AddRoundKey with round-10 keys
+    for i in range(4):
+        for j in range(4):
+            state[i, j] ^= _rk(10, j, i)
+
+    for rnd in range(1, 11):
+        # InvSubBytes + InvShiftRows
+        new_state = np.zeros((4, 4), dtype=np.uint8)
+        for i in range(4):
+            for j in range(4):
+                sb = inv_s_box_flat[state[i, j]]
+                new_state[i, (j + i) % 4] = sb
+        state = new_state
+
+        if rnd < 10:
+            # InvMixColumns + AddRoundKey (key XOR inside gmul — preserved from original)
+            mixed = np.zeros((4, 4), dtype=np.uint8)
+            for i in range(4):
+                for j in range(4):
+                    mixed[i, j] = (
+                        _galois_multiplication(inv_fixed_flat[i * 4 + 0],
+                            state[0, j] ^ _rk(10 - rnd, j, 0)) ^
+                        _galois_multiplication(inv_fixed_flat[i * 4 + 1],
+                            state[1, j] ^ _rk(10 - rnd, j, 1)) ^
+                        _galois_multiplication(inv_fixed_flat[i * 4 + 2],
+                            state[2, j] ^ _rk(10 - rnd, j, 2)) ^
+                        _galois_multiplication(inv_fixed_flat[i * 4 + 3],
+                            state[3, j] ^ _rk(10 - rnd, j, 3))
+                    )
+            state = mixed
+        else:
+            for i in range(4):
+                for j in range(4):
+                    state[i, j] ^= _rk(10 - rnd, j, i)
+
+    out = np.empty(16, dtype=np.uint8)
+    for i in range(4):
+        for j in range(4):
+            out[i * 4 + j] = state[j, i]
+    return out
+
+
+@njit
+def _build_round_keys_flat(key_bytes):
+    """
+    Reproduce generate_round_keys() logic in pure NumPy/Numba.
+    Returns a flat (176,) uint8 array: 44 words × 4 bytes, row-major.
+    """
+    W = np.zeros((44, 4), dtype=np.uint8)
+    for i in range(4):
+        for b in range(4):
+            W[i, b] = key_bytes[i * 4 + b]
+
+    for i in range(4, 44):
+        temp = W[i - 1].copy()
+        if i % 4 == 0:
+            # RotWord
+            t = temp[0]; temp[0] = temp[1]; temp[1] = temp[2]
+            temp[2] = temp[3]; temp[3] = t
+            # SubWord + Rcon  (matches original: only byte 0 gets Rcon)
+            for b in range(4):
+                temp[b] = _S_BOX_FLAT[temp[b]]
+            temp[0] ^= _RCON_FLAT[i // 4 - 1]
+        for b in range(4):
+            W[i, b] = W[i - 4, b] ^ temp[b]
+
+    return W.flatten()
+
+
+@njit
+def _process_pixels(pixels, round_keys_flat, s_box_flat, fixed_flat,
+                    inv_s_box_flat, inv_fixed_flat, encrypt):
+    n = len(pixels)
+    out = np.zeros(n, dtype=np.uint8)
+    block = np.zeros(16, dtype=np.uint8)
+
+    for start in range(0, n, 16):
+        end = start + 16
+        actual = min(16, n - start)
+        for k in range(actual):
+            block[k] = pixels[start + k]
+        for k in range(actual, 16):
+            block[k] = np.uint8(0)
+
+        if encrypt:
+            result = _aes_encrypt_block(block, s_box_flat, fixed_flat, np.zeros(1, dtype=np.uint8),
+                                         inv_s_box_flat, inv_fixed_flat, round_keys_flat)
+        else:
+            result = _aes_decrypt_block(block, inv_s_box_flat, inv_fixed_flat, round_keys_flat)
+
+        for k in range(actual):
+            out[start + k] = result[k]
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# The original pure-Python functions — unchanged
+# (kept so the rest of your app can still call them if needed)
+# ---------------------------------------------------------------------------
+
+def galois_multiplication(a: int, b: int) -> int:
+    p = 0
+    while b:
+        if b & 1:
+            p ^= a
+        high_bit_set = a & 0x80
+        a = (a << 1) & 0xFF
+        if high_bit_set:
+            a ^= 0x1B
+        b >>= 1
+    return p
+
+
+def sub_byte(value: int) -> int:
+    row = (value >> 4) & 0x0F
+    col = value & 0x0F
+    return s_box[row][col]
+
+
+def inv_sub_byte(value: int) -> int:
+    row = (value >> 4) & 0x0F
+    col = value & 0x0F
+    return inv_s_box[row][col]
+
+
+def expand_key(byte_block: List[int], round_index: int) -> List[int]:
+    expanded = byte_block.copy()
+    for i in range(4):
+        sbyte = sub_byte(byte_block[i])
+        expanded[(i + 3) % 4] = (sbyte ^ round_constants[round_index][(i + 3) % 4])
+    return expanded
+
+
+def generate_round_keys(key: str):
+    round_key_blocks = []
+    for i in range(0, 16, 4):
+        block = [ord(key[i + j]) for j in range(4)]
+        round_key_blocks.append(block)
+    block_index = 3
+    for rnd in range(10):
+        expanded = expand_key(round_key_blocks[block_index], rnd)
+        new_block = [round_key_blocks[block_index - 3][j] ^ expanded[j] for j in range(4)]
+        round_key_blocks.append(new_block)
+        block_index += 1
+        for _ in range(3):
+            new_block = [
+                round_key_blocks[block_index - 3][j] ^ round_key_blocks[block_index][j]
+                for j in range(4)
+            ]
+            round_key_blocks.append(new_block)
+            block_index += 1
+    return round_key_blocks
+
+
+def add_round_key(state, keys):
+    result = [[0] * 4 for _ in range(4)]
+    for i in range(4):
+        for j in range(4):
+            result[i][j] = state[i][j] ^ keys[j][i]
+    return result
+
+
+def sub_bytes_and_shift_rows(state):
+    new_state = [[0] * 4 for _ in range(4)]
+    for i in range(4):
+        for j in range(4):
+            sub = sub_byte(state[i][j])
+            new_state[i][(j - i) % 4] = sub
+    return new_state
+
+
+def inv_sub_bytes_and_shift_rows(state):
+    new_state = [[0] * 4 for _ in range(4)]
+    for i in range(4):
+        for j in range(4):
+            sub = inv_sub_byte(state[i][j])
+            new_state[i][(j + i) % 4] = sub
+    return new_state
+
+
+def mix_columns_and_add_round_key(mat1, mat2, keys):
+    mixed = [[0] * 4 for _ in range(4)]
+    for i in range(4):
+        for j in range(4):
+            mixed[i][j] = (
+                galois_multiplication(mat1[i][0], mat2[0][j]) ^
+                galois_multiplication(mat1[i][1], mat2[1][j]) ^
+                galois_multiplication(mat1[i][2], mat2[2][j]) ^
+                galois_multiplication(mat1[i][3], mat2[3][j]) ^
+                keys[j][i]
+            )
+    return mixed
+
+
+def inv_mix_columns_and_add_round_key(mat1, mat2, keys):
+    mixed = [[0] * 4 for _ in range(4)]
+    for i in range(4):
+        for j in range(4):
+            mixed[i][j] = (
+                galois_multiplication(mat1[i][0], mat2[0][j] ^ keys[j][0]) ^
+                galois_multiplication(mat1[i][1], mat2[1][j] ^ keys[j][1]) ^
+                galois_multiplication(mat1[i][2], mat2[2][j] ^ keys[j][2]) ^
+                galois_multiplication(mat1[i][3], mat2[3][j] ^ keys[j][3])
+            )
+    return mixed
+
+
+def aes_encrypt(block: List[int], round_keys):
+    state = [[0] * 4 for _ in range(4)]
+    for i in range(4):
+        for j in range(4):
+            state[j][i] = block[i * 4 + j]
+    state = add_round_key(state, round_keys[:4])
+    for round in range(1, 11):
+        state = sub_bytes_and_shift_rows(state)
+        current_round_keys = round_keys[round * 4:(round + 1) * 4]
+        if round < 10:
+            state = mix_columns_and_add_round_key(fixed_matrix, state, current_round_keys)
+        else:
+            state = add_round_key(state, current_round_keys)
+    cipher = []
+    for i in range(4):
+        for j in range(4):
+            cipher.append(state[j][i])
+    return cipher
+
+
+def aes_decrypt(block: List[int], round_keys):
+    state = [[0] * 4 for _ in range(4)]
+    for i in range(4):
+        for j in range(4):
+            state[j][i] = block[i * 4 + j]
+    reversed_keys = []
+    for i in range(len(round_keys) - 4, -1, -4):
+        reversed_keys.extend(round_keys[i:i + 4])
+    state = add_round_key(state, reversed_keys[:4])
+    for round in range(1, 11):
+        current_round_key = reversed_keys[round * 4:(round + 1) * 4]
+        state = inv_sub_bytes_and_shift_rows(state)
+        if round < 10:
+            state = inv_mix_columns_and_add_round_key(inv_fixed_matrix, state, current_round_key)
+        else:
+            state = add_round_key(state, current_round_key)
+    plain = []
+    for i in range(4):
+        for j in range(4):
+            plain.append(state[j][i])
+    return plain
+
+
+def encrypt_pixels(pixels: List[int], round_keys) -> List[int]:
+    encrypted_pixels = []
+    for start in range(0, len(pixels), 16):
+        pixel_block = pixels[start:start + 16]
+        if len(pixel_block) < 16:
+            pixel_block = pixel_block + [0] * (16 - len(pixel_block))
+        encrypted_block = aes_encrypt(pixel_block, round_keys)
+        encrypted_pixels.extend(encrypted_block[: len(pixels[start:start + 16])])
+    return encrypted_pixels
+
+
+def decrypt_pixels(pixels: List[int], round_keys) -> List[int]:
+    decrypted_pixels = []
+    for start in range(0, len(pixels), 16):
+        pixel_block = pixels[start:start + 16]
+        if len(pixel_block) < 16:
+            pixel_block = pixel_block + [0] * (16 - len(pixel_block))
+        decrypted_block = aes_decrypt(pixel_block, round_keys)
+        decrypted_pixels.extend(decrypted_block[: len(pixels[start:start + 16])])
+    return decrypted_pixels
+
+
+# ---------------------------------------------------------------------------
+# Public API — drop-in replacements, Numba path used when available
+# ---------------------------------------------------------------------------
+
+def apply_custom_aes_v5_encrypt(pixels: List[int], key: str) -> List[int]:
+    t = datetime.now()
+    print(t, "Starting encryption")
+
+    if _NUMBA:
+        key_bytes = np.frombuffer(key.encode("latin-1"), dtype=np.uint8)
+        rk_flat   = _build_round_keys_flat(key_bytes)
+        arr       = np.asarray(pixels, dtype=np.uint8)
+        result    = _process_pixels(arr, rk_flat,
+                                    _S_BOX_FLAT, _FIXED_FLAT,
+                                    _INV_S_BOX_FLAT, _INV_FIXED_FLAT,
+                                    True)
+        out = result.tolist()
+    else:
+        round_keys = generate_round_keys(key)
+        out = encrypt_pixels(pixels, round_keys)
+
+    print(datetime.now(), "Finished encryption")
+    print(f"Encryption took {(datetime.now() - t).total_seconds()} seconds")
+    return out
+
+
+def apply_custom_aes_v5_decrypt(pixels: List[int], key: str) -> List[int]:
+    if _NUMBA:
+        key_bytes = np.frombuffer(key.encode("latin-1"), dtype=np.uint8)
+        rk_flat   = _build_round_keys_flat(key_bytes)
+        arr       = np.asarray(pixels, dtype=np.uint8)
+        result    = _process_pixels(arr, rk_flat,
+                                    _S_BOX_FLAT, _FIXED_FLAT,
+                                    _INV_S_BOX_FLAT, _INV_FIXED_FLAT,
+                                    False)
+        return result.tolist()
+    else:
+        round_keys = generate_round_keys(key)
+        return decrypt_pixels(pixels, round_keys)
+
+
+if __name__ == "__main__":
+    enc = apply_custom_aes_v5_encrypt([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                                       17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+                                       33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+                                       49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64], "encryptionkey123")
+    print("Encrypted:", len(enc), enc)
+    dec = apply_custom_aes_v5_decrypt(enc, "encryptionkey123")
+    print("Decrypted:", len(dec), dec)

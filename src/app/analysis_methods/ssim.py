@@ -1,11 +1,19 @@
-from PIL import Image
 import argparse
 import numpy as np
+from pathlib import Path
+
+from ..utils.imagePixels import extract_pixels
 
 
 def _load_image(image):
-    if isinstance(image, str):
-        return np.array(Image.open(image).convert("RGB"), dtype=np.uint8)
+    if isinstance(image, (str, Path)):
+        pixels, _ = extract_pixels(Path(image))
+        arr = np.asarray(pixels, dtype=np.uint8)
+        if arr.ndim == 2:
+            return np.repeat(arr[..., None], 3, axis=2)
+        if arr.ndim == 3 and arr.shape[2] >= 3:
+            return arr[..., :3]
+        raise ValueError("Image must be grayscale or RGB")
     return np.asarray(image)
 
 

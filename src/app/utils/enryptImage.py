@@ -16,6 +16,12 @@ from ..algorithms import (
     chacha20_decrypt_bytes,
     apply_custom_aes_decrypt,
     apply_custom_aes_encrypt,
+    apply_custom_aes_v2_decrypt,
+    apply_custom_aes_v2_encrypt,
+    apply_custom_aes_v4_decrypt,
+    apply_custom_aes_v4_encrypt,
+    apply_custom_aes_v5_decrypt,
+    apply_custom_aes_v5_encrypt,
     apply_logistic_map_decrypt,
     apply_logistic_map_encrypt,
     apply_henon_map_decrypt,
@@ -143,12 +149,17 @@ def encrypt_image(
 
             # Convert numpy pixel array to a flat list[int] as expected by custom AES
             flat_pixels = pixels.flatten().tolist()
+            print(len(flat_pixels))
+            transformed_list = apply_custom_aes_v4_encrypt(flat_pixels, key)
+            print(len(transformed_list))
 
-            transformed_list = apply_custom_aes_encrypt(flat_pixels, key)
+            if (len(transformed_list) % 4 != 0):
+                transformed_list.extend([0] * (4 - len(transformed_list) % 4))
 
             # Convert back to a numpy array with original shape and dtype for reconstruction
+            print(pixels.shape)
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(
-                pixels.shape
+                (304, 921, 4)
             )
 
             # Custom AES does not use a nonce in this implementation; write an empty nonce
@@ -345,7 +356,7 @@ def decrypt_image(
             # Convert numpy pixel array to a flat list[int] as expected by custom AES
             flat_pixels = pixels.flatten().tolist()
 
-            transformed_list = apply_custom_aes_decrypt(flat_pixels, key)
+            transformed_list = apply_custom_aes_v4_decrypt(flat_pixels, key)
 
             # Convert back to a numpy array with original shape and dtype for reconstruction
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(

@@ -1,11 +1,16 @@
-from PIL import Image
 import argparse
 import numpy as np
+from pathlib import Path
+
+from ..utils.imagePixels import extract_preview_pixels
+
+MAX_ANALYSIS_SIZE = (2048, 2048)
 
 
 def _load_image(image):
-    if isinstance(image, str):
-        return np.array(Image.open(image), dtype=np.uint8)
+    if isinstance(image, (str, Path)):
+        pixels, _ = extract_preview_pixels(Path(image), max_size=MAX_ANALYSIS_SIZE)
+        return np.asarray(pixels, dtype=np.uint8)
     return np.asarray(image)
 
 

@@ -17,7 +17,7 @@ from ..analysis_methods import (
     mean_squared_error,
     peak_signal_to_noise_ratio,
     unified_average_changing_intensity,
-    structural_similarity
+    structural_similarity,
 )
 from ..utils import ImageUiState, build_image_box, choose_image, set_result_text
 
@@ -282,9 +282,6 @@ def on_complete_analysis() -> None:
         eb_str = str(encrypted_plus_one_bit_path)
         p_str = str(plain_path)
 
-        img = Image.open(encrypted_path).convert("RGB")
-        arr = np.asarray(img, dtype=np.uint8)
-
         sections = [
             _make_section(
                 "Encrypted",
@@ -314,14 +311,14 @@ def on_complete_analysis() -> None:
                 "Encrypted",
                 "Entropy results",
                 format_entropy_result(
-                    "Entropy results", pixel_entropy_with_blocks(arr)
+                    "Entropy results", pixel_entropy_with_blocks(e_str)
                 ).replace("Entropy results\n", "", 1),
             ),
             _make_section(
                 "Encrypted",
                 "Histogram results",
                 format_histogram_result(
-                    "Histogram results", image_histogram(arr)
+                    "Histogram results", image_histogram(e_str)
                 ).replace("Histogram results\n", "", 1),
             ),
             _make_section(
@@ -409,16 +406,10 @@ def on_analyse() -> None:
     try:
         encrypted_path = ui_state.selected_image_path
         if metric == "Entropy":
-            # Convert to RGB numpy array so entropy() accepts it regardless
-            # of source image mode (RGBA, P, etc.).
-            img = Image.open(encrypted_path).convert("RGB")
-            arr = np.asarray(img, dtype=np.uint8)
-            result = pixel_entropy_with_blocks(arr)
+            result = pixel_entropy_with_blocks(str(encrypted_path))
             text = format_entropy_result("", result)
         elif metric == "Histogram":
-            img = Image.open(encrypted_path).convert("RGB")
-            arr = np.asarray(img, dtype=np.uint8)
-            result = image_histogram(arr)
+            result = image_histogram(str(encrypted_path))
             text = format_histogram_result("", result)
         else:
             encrypted_plus_one_bit_path = (
@@ -643,6 +634,7 @@ def build_analyse_ui() -> None:
             pass
         try:
             from .encrypt_ui import build_encrypt_ui
+
             build_encrypt_ui()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open Encrypt UI:\n{e}")
