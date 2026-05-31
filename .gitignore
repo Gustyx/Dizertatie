@@ -7,6 +7,4 @@ venv/
 *.tif
 *.npz
 *.dcm
-*.meta
-*.nonce
 *.csv

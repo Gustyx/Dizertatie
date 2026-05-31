@@ -56,14 +56,6 @@ LAST_ANALYSIS_SECTIONS: list[tuple[str, str, str]] = []
 
 
 base_dir = Path(__file__).resolve().parent.parent / "shared"
-#encrypted_dir = base_dir / "images" / "encrypted"
-#encrypted_dir.mkdir(parents=True, exist_ok=True)
-#encrypted_plus_one_bit_dir = base_dir / "images" / "encrypted_plus_one_bit"
-#encrypted_plus_one_bit_dir.mkdir(parents=True, exist_ok=True)
-#nonce_dir = base_dir / "nonce_files"
-#nonce_dir.mkdir(parents=True, exist_ok=True)
-#decrypted_dir = base_dir / "images" / "decrypted"
-#decrypted_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _set_category_button_state(active_name: str) -> None:

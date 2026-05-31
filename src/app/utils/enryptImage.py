@@ -32,13 +32,8 @@ from ..algorithms import (
 )
 from .handle_image_pixels import extract_pixels, reconstruct_image
 
-#_ROOT_DIR = Path(__file__).resolve().parent.parent / "shared"
-#_META_DIR = _ROOT_DIR / "meta_files"
-#_NONCE_DIR = _ROOT_DIR / "nonce_files"
-
 
 def _meta_path_for_image_path(image_path: Path) -> Path:
-    # Keep metadata in a single folder while preserving a unique, reversible name.
     meta_name = f"{image_path.stem}.meta"
     meta_dir = image_path.parent.parent / "meta_files"
     meta_dir.mkdir(parents=True, exist_ok=True)
@@ -46,7 +41,6 @@ def _meta_path_for_image_path(image_path: Path) -> Path:
 
 
 def _nonce_path_for_image_path(image_path: Path) -> Path:
-    # Keep nonce files in a single folder while preserving a unique, reversible name.
     nonce_name = f"{image_path.stem}.nonce"
     nonce_dir = image_path.parent.parent / "nonce_files"
     nonce_dir.mkdir(parents=True, exist_ok=True)
@@ -60,7 +54,6 @@ def _read_or_create_nonce(
     label: str,
 ) -> bytes:
     nonce_path = _nonce_path_for_image_path(output_path)
-    print(f"Using nonce path: {nonce_path}")
     if nonce_path.exists():
         nonce = nonce_path.read_bytes()
         if len(nonce) not in expected_lengths:
@@ -82,7 +75,6 @@ def _write_ciphertext_and_meta(
     mode: str,
     original_length: int,
 ) -> None:
-    # Optionally write ciphertext to a separate file when a suffix is provided.
     if ciphertext_suffix:
         ciphertext_path = output_path.with_suffix(ciphertext_suffix)
         ciphertext_path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,14 +108,6 @@ def _load_ciphertext_and_meta(
     shape = tuple(meta.get("shape", []))
     mode = meta.get("mode")
     return encrypted_bytes, shape, mode
-
-
-def _display_bytes(encrypted_bytes: bytes, original_length: int) -> bytes:
-    return (
-        encrypted_bytes[:original_length]
-        if len(encrypted_bytes) >= original_length
-        else encrypted_bytes + bytes(original_length - len(encrypted_bytes))
-    )
 
 
 def _ciphertext_canvas_shape(
