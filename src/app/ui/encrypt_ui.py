@@ -56,14 +56,14 @@ LAST_ANALYSIS_SECTIONS: list[tuple[str, str, str]] = []
 
 
 base_dir = Path(__file__).resolve().parent.parent / "shared"
-encrypted_dir = base_dir / "images" / "encrypted"
-encrypted_dir.mkdir(parents=True, exist_ok=True)
-encrypted_plus_one_bit_dir = base_dir / "images" / "encrypted_plus_one_bit"
-encrypted_plus_one_bit_dir.mkdir(parents=True, exist_ok=True)
-nonce_dir = base_dir / "nonce_files"
-nonce_dir.mkdir(parents=True, exist_ok=True)
-decrypted_dir = base_dir / "images" / "decrypted"
-decrypted_dir.mkdir(parents=True, exist_ok=True)
+#encrypted_dir = base_dir / "images" / "encrypted"
+#encrypted_dir.mkdir(parents=True, exist_ok=True)
+#encrypted_plus_one_bit_dir = base_dir / "images" / "encrypted_plus_one_bit"
+#encrypted_plus_one_bit_dir.mkdir(parents=True, exist_ok=True)
+#nonce_dir = base_dir / "nonce_files"
+#nonce_dir.mkdir(parents=True, exist_ok=True)
+#decrypted_dir = base_dir / "images" / "decrypted"
+#decrypted_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _set_category_button_state(active_name: str) -> None:
@@ -130,18 +130,21 @@ def on_encrypt(canvas: tk.Canvas) -> Path | None:
     try:
         input_path = ui_state.selected_image_path
 
-        # Determine algorithm from UI selector if available
         try:
             alg = ALGORITHM_SELECTION.get()
         except Exception:
             alg = ALGORITHM_DEFAULT
 
+        encrypted_dir = input_path.parent.parent / "encrypted"
+        encrypted_dir.mkdir(parents=True, exist_ok=True)
         prefix = alg.lower()
         output_path = encrypted_dir / f"{prefix}_enc_{input_path.name}"
 
         encrypt_image(input_path, output_path, KEY_PHRASE, algorithm=alg)
 
         input_path_2 = add_one_bit_to_pixel(input_path)
+        encrypted_plus_one_bit_dir = input_path.parent.parent / "encrypted_plus_one_bit"
+        encrypted_plus_one_bit_dir.mkdir(parents=True, exist_ok=True)
         output_path_2 = encrypted_plus_one_bit_dir / f"{prefix}_enc_{input_path.name}"
 
         encrypt_image(input_path_2, output_path_2, KEY_PHRASE, algorithm=alg)
@@ -353,6 +356,9 @@ def on_decrypt(canvas: tk.Canvas) -> None:
             output_name = f"{alg_prefix}_dec_{image_name}"
         else:
             output_name = f"dec_{output_name}"
+ 
+        decrypted_dir = input_path.parent.parent / "decrypted"
+        decrypted_dir.mkdir(parents=True, exist_ok=True)
         output_path = decrypted_dir / output_name
 
         decrypt_image(input_path, output_path, KEY_PHRASE, algorithm=detected_alg)
@@ -375,7 +381,7 @@ def build_buttons(frame, img_box) -> None:
             img_box,
             ui_state,
             title="Select image",
-            initialdir=str(base_dir / "images" / "plain"),
+            initialdir=str(base_dir / "images"),
             extra_window_height=320,
         ),
     )

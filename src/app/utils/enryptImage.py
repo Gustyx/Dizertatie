@@ -32,21 +32,25 @@ from ..algorithms import (
 )
 from .handle_image_pixels import extract_pixels, reconstruct_image
 
-_ROOT_DIR = Path(__file__).resolve().parent.parent / "shared"
-_META_DIR = _ROOT_DIR / "meta_files"
-_NONCE_DIR = _ROOT_DIR / "nonce_files"
+#_ROOT_DIR = Path(__file__).resolve().parent.parent / "shared"
+#_META_DIR = _ROOT_DIR / "meta_files"
+#_NONCE_DIR = _ROOT_DIR / "nonce_files"
 
 
 def _meta_path_for_image_path(image_path: Path) -> Path:
     # Keep metadata in a single folder while preserving a unique, reversible name.
     meta_name = f"{image_path.stem}.meta"
-    return _META_DIR / meta_name
+    meta_dir = image_path.parent.parent / "meta_files"
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    return meta_dir / meta_name
 
 
 def _nonce_path_for_image_path(image_path: Path) -> Path:
     # Keep nonce files in a single folder while preserving a unique, reversible name.
     nonce_name = f"{image_path.stem}.nonce"
-    return _NONCE_DIR / nonce_name
+    nonce_dir = image_path.parent.parent / "nonce_files"
+    nonce_dir.mkdir(parents=True, exist_ok=True)
+    return nonce_dir / nonce_name
 
 
 def _read_or_create_nonce(
@@ -90,7 +94,6 @@ def _write_ciphertext_and_meta(
         "length": original_length,
         "ciphertext_length": len(encrypted_bytes),
     }
-    _META_DIR.mkdir(parents=True, exist_ok=True)
     meta_path = _meta_path_for_image_path(output_path)
     meta_path.write_text(json.dumps(meta))
 
