@@ -111,32 +111,55 @@ def _load_ciphertext_and_meta(
 
 
 def _ciphertext_canvas_shape(
-    ciphertext_length: int, source_shape: tuple[int, ...]
+    ciphertext_length: int, source_shape: tuple[int, ...], channels: int = 1
 ) -> tuple[int, int]:
-    """Choose a 2D canvas shape that preserves the source image aspect ratio roughly."""
+    """Choose a 2D canvas shape that preserves the source image aspect ratio roughly.
+
+    The canvas area is computed in pixels (each pixel holds `channels` bytes).
+    """
 
     if len(source_shape) < 2:
-        return 1, ciphertext_length
+        # single row of pixels
+        return 1, max(1, int(np.ceil(ciphertext_length / channels)))
 
     source_height = max(1, int(source_shape[0]))
     source_width = max(1, int(source_shape[1]))
     aspect_ratio = source_width / source_height
 
-    canvas_height = max(1, int(np.ceil(np.sqrt(ciphertext_length / aspect_ratio))))
-    canvas_width = max(1, int(np.ceil(ciphertext_length / canvas_height)))
+    required_pixels = int(np.ceil(ciphertext_length / float(channels)))
+
+    canvas_height = max(1, int(np.ceil(np.sqrt(required_pixels / aspect_ratio))))
+    canvas_width = max(1, int(np.ceil(required_pixels / canvas_height)))
     return canvas_height, canvas_width
 
 
 def _save_ciphertext_image(
-    output_path: Path, encrypted_bytes: bytes, source_shape: tuple[int, ...]
+    output_path: Path,
+    encrypted_bytes: bytes,
+    source_shape: tuple[int, ...],
+    channels: int = 1,
 ) -> None:
     enc_arr = np.frombuffer(encrypted_bytes, dtype=np.uint8)
-    height, width = _ciphertext_canvas_shape(len(enc_arr), source_shape)
-    padded = np.zeros((height, width), dtype=np.uint8)
-    padded.flat[: len(enc_arr)] = enc_arr
+    height, width = _ciphertext_canvas_shape(len(enc_arr), source_shape, channels)
+
+    total_slots = height * width * channels
+    padded_flat = np.zeros((total_slots,), dtype=np.uint8)
+    padded_flat[: len(enc_arr)] = enc_arr
+
+    if channels == 1:
+        padded = padded_flat.reshape((height, width))
+        mode = "L"
+    else:
+        padded = padded_flat.reshape((height, width, channels))
+        # support RGB only for now
+        mode = "RGB" if channels == 3 else None
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(padded, mode="L").save(output_path)
+    if mode:
+        Image.fromarray(padded, mode=mode).save(output_path)
+    else:
+        # fallback to letting PIL infer mode
+        Image.fromarray(padded).save(output_path)
 
 
 def _delete_legacy_ciphertext_sidecars(
@@ -230,7 +253,10 @@ def encrypt_image(
             # Create a single-channel image that contains the full ciphertext bytes.
             # Save the ciphertext image directly as a single-channel image.
             # Do not pass it through reconstruct_image because the original mode/shape no longer apply.
-            _save_ciphertext_image(output_path, encrypted_bytes, pixels.shape)
+            # Pack ciphertext across RGB channels so encrypted images look colored.
+            _save_ciphertext_image(
+                output_path, encrypted_bytes, pixels.shape, channels=3
+            )
             return
 
             # nonce file will contain the IV only
@@ -249,7 +275,9 @@ def encrypt_image(
             )
 
             _delete_legacy_ciphertext_sidecars(output_path, (".gcm",))
-            _save_ciphertext_image(output_path, encrypted_bytes, pixels.shape)
+            _save_ciphertext_image(
+                output_path, encrypted_bytes, pixels.shape, channels=3
+            )
             return
         case "AES_CCM":
             # AES-CCM: store nonce in nonce file and embed ciphertext in the output image.
@@ -274,7 +302,9 @@ def encrypt_image(
             )
 
             _delete_legacy_ciphertext_sidecars(output_path, (".ccm",))
-            _save_ciphertext_image(output_path, encrypted_bytes, pixels.shape)
+            _save_ciphertext_image(
+                output_path, encrypted_bytes, pixels.shape, channels=3
+            )
             return
         case "CHACHA20":
             # ChaCha20 stream cipher (no auth). Embed ciphertext in the output image.
@@ -289,7 +319,9 @@ def encrypt_image(
             )
 
             _delete_legacy_ciphertext_sidecars(output_path, (".chacha",))
-            _save_ciphertext_image(output_path, encrypted_bytes, pixels.shape)
+            _save_ciphertext_image(
+                output_path, encrypted_bytes, pixels.shape, channels=3
+            )
             return
         case _:
             raise ValueError(f"Unsupported algorithm: {algorithm}")
