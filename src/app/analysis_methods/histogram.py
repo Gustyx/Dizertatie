@@ -7,7 +7,7 @@ import numpy as np
 
 from PIL import Image
 
-from ..utils.imagePixels import extract_preview_pixels
+from ..utils import extract_preview_pixels
 
 MAX_ANALYSIS_SIZE = (2048, 2048)
 

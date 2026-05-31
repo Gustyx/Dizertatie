@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-from ..utils.imagePixels import extract_preview_pixels
+from ..utils import extract_preview_pixels
 
 MAX_ANALYSIS_SIZE = (2048, 2048)
 

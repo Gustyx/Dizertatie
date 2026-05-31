@@ -19,6 +19,6 @@ from .custom_aes import apply_custom_aes_decrypt, apply_custom_aes_encrypt
 from .custom_aes_v2 import apply_custom_aes_v2_decrypt, apply_custom_aes_v2_encrypt
 from .custom_aes_v4 import apply_custom_aes_v4_decrypt, apply_custom_aes_v4_encrypt
 from .custom_aes_v5 import apply_custom_aes_v5_decrypt, apply_custom_aes_v5_encrypt
-from .logisticMap import apply_logistic_map_decrypt, apply_logistic_map_encrypt
-from .henonMap import apply_henon_map_decrypt, apply_henon_map_encrypt
+from .logistic_map import apply_logistic_map_decrypt, apply_logistic_map_encrypt
+from .henon_map import apply_henon_map_decrypt, apply_henon_map_encrypt
 from .des import derive_des_key, des_ctr_transform

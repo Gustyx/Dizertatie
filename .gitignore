@@ -4,4 +4,9 @@ venv/
 *.egg-info/
 *.png
 *.tiff
+*.tif
 *.npz
+*.dcm
+*.meta
+*.nonce
+*.csv

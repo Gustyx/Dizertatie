@@ -18,7 +18,7 @@ except Exception:
     DND_FILES = None
 
 
-IMAGE_FILETYPES = [("Images", "*.png *.jpg *.jpeg *.bmp *.tiff *.gif")]
+IMAGE_FILETYPES = [("Images", "*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif")]
 
 
 @contextmanager

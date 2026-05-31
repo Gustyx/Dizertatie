@@ -2,20 +2,16 @@ from pathlib import Path
 import numpy as np
 import argparse
 
-from ..utils.imagePixels import extract_preview_pixels
+from ..utils import extract_preview_pixels, align_rgb_images, load_rgb_image
 
 MAX_ANALYSIS_SIZE = (2048, 2048)
 
 
 def _load_image(path):
-    pixels, _ = extract_preview_pixels(Path(path), max_size=MAX_ANALYSIS_SIZE)
-    arr = np.asarray(pixels, dtype=np.uint8)
-
-    if arr.ndim == 2:
-        return np.repeat(arr[..., None], 3, axis=2)
-    if arr.ndim == 3 and arr.shape[2] >= 3:
-        return arr[..., :3]
-    raise ValueError("Image must be grayscale or RGB")
+    if isinstance(path, (str, Path)):
+        pixels, _ = extract_preview_pixels(Path(path), max_size=MAX_ANALYSIS_SIZE)
+        return load_rgb_image(pixels)
+    return load_rgb_image(path)
 
 
 def _pearson(x, y):
@@ -37,10 +33,7 @@ def correlation_between_images(path_orig, path_enc):
     Returns a dict with per-channel Pearson correlations and a grayscale correlation.
     Values near 0 indicate low linear correlation (desired for strong encryption).
     """
-    a = _load_image(path_orig)
-    b = _load_image(path_enc)
-    if a.shape != b.shape:
-        raise ValueError("Images must have the same dimensions and channels")
+    a, b = align_rgb_images(_load_image(path_orig), _load_image(path_enc))
 
     # per-channel
     channels = ("R", "G", "B")

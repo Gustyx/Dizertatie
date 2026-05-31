@@ -2,19 +2,13 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-from ..utils.imagePixels import extract_pixels
+from ..utils import align_rgb_images, load_rgb_image
 
 
 def _load_image(image):
     if isinstance(image, (str, Path)):
-        pixels, _ = extract_pixels(Path(image))
-        arr = np.asarray(pixels, dtype=np.uint8)
-        if arr.ndim == 2:
-            return np.repeat(arr[..., None], 3, axis=2)
-        if arr.ndim == 3 and arr.shape[2] >= 3:
-            return arr[..., :3]
-        raise ValueError("Image must be grayscale or RGB")
-    return np.asarray(image)
+        return load_rgb_image(Path(image))
+    return load_rgb_image(image)
 
 
 def number_of_pixel_change_rate(first_image, second_image):
@@ -27,8 +21,7 @@ def number_of_pixel_change_rate(first_image, second_image):
     img_a = _load_image(first_image)
     img_b = _load_image(second_image)
 
-    if img_a.shape != img_b.shape:
-        raise ValueError("Images must have the same shape")
+    img_a, img_b = align_rgb_images(img_a, img_b)
 
     if img_a.ndim == 2:
         changed = img_a != img_b

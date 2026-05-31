@@ -2,6 +2,7 @@ import os
 import json
 from pathlib import Path
 import numpy as np
+from PIL import Image
 
 from ..algorithms import (
     aes_ctr_transform,
@@ -29,7 +30,7 @@ from ..algorithms import (
     derive_des_key,
     des_ctr_transform,
 )
-from .imagePixels import extract_pixels, reconstruct_image
+from .handle_image_pixels import extract_pixels, reconstruct_image
 
 _ROOT_DIR = Path(__file__).resolve().parent.parent / "shared"
 _META_DIR = _ROOT_DIR / "meta_files"
@@ -71,20 +72,23 @@ def _read_or_create_nonce(
 
 def _write_ciphertext_and_meta(
     output_path: Path,
-    ciphertext_suffix: str,
+    ciphertext_suffix: str | None,
     encrypted_bytes: bytes,
     pixels: np.ndarray,
     mode: str,
     original_length: int,
 ) -> None:
-    ciphertext_path = output_path.with_suffix(ciphertext_suffix)
-    ciphertext_path.parent.mkdir(parents=True, exist_ok=True)
-    ciphertext_path.write_bytes(encrypted_bytes)
+    # Optionally write ciphertext to a separate file when a suffix is provided.
+    if ciphertext_suffix:
+        ciphertext_path = output_path.with_suffix(ciphertext_suffix)
+        ciphertext_path.parent.mkdir(parents=True, exist_ok=True)
+        ciphertext_path.write_bytes(encrypted_bytes)
 
     meta = {
         "shape": list(pixels.shape),
         "mode": mode,
         "length": original_length,
+        "ciphertext_length": len(encrypted_bytes),
     }
     _META_DIR.mkdir(parents=True, exist_ok=True)
     meta_path = _meta_path_for_image_path(output_path)
@@ -117,6 +121,23 @@ def _display_bytes(encrypted_bytes: bytes, original_length: int) -> bytes:
         if len(encrypted_bytes) >= original_length
         else encrypted_bytes + bytes(original_length - len(encrypted_bytes))
     )
+
+
+def _ciphertext_canvas_shape(
+    ciphertext_length: int, source_shape: tuple[int, ...]
+) -> tuple[int, int]:
+    """Choose a 2D canvas shape that preserves the source image aspect ratio roughly."""
+
+    if len(source_shape) < 2:
+        return 1, ciphertext_length
+
+    source_height = max(1, int(source_shape[0]))
+    source_width = max(1, int(source_shape[1]))
+    aspect_ratio = source_width / source_height
+
+    canvas_height = max(1, int(np.ceil(np.sqrt(ciphertext_length / aspect_ratio))))
+    canvas_width = max(1, int(np.ceil(ciphertext_length / canvas_height)))
+    return canvas_height, canvas_width
 
 
 def encrypt_image(
@@ -153,7 +174,7 @@ def encrypt_image(
             transformed_list = apply_custom_aes_v4_encrypt(flat_pixels, key)
             print(len(transformed_list))
 
-            if (len(transformed_list) % 4 != 0):
+            if len(transformed_list) % 4 != 0:
                 transformed_list.extend([0] * (4 - len(transformed_list) % 4))
 
             # Convert back to a numpy array with original shape and dtype for reconstruction
@@ -187,16 +208,23 @@ def encrypt_image(
 
             # Flatten pixels and encrypt bytes
             encrypted_bytes = aes_cbc_encrypt_bytes(flat, key, iv)
-            print(output_path)
+            # Write metadata (including ciphertext length). Do not write a separate .cbc file;
+            # instead embed the full ciphertext into the saved image as an uncompressed single-channel image.
             _write_ciphertext_and_meta(
-                output_path, ".cbc", encrypted_bytes, pixels, mode, len(flat)
+                output_path, None, encrypted_bytes, pixels, mode, len(flat)
             )
 
-            # For the displayed/saved image file, write the first N bytes (or pad/truncate)
-            disp_bytes = _display_bytes(encrypted_bytes, len(flat))
-            transformed = np.frombuffer(disp_bytes, dtype=np.uint8).reshape(
-                pixels.shape
-            )
+            # Create a single-channel image that contains the full ciphertext bytes.
+            enc_arr = np.frombuffer(encrypted_bytes, dtype=np.uint8)
+            h, w = _ciphertext_canvas_shape(len(enc_arr), pixels.shape)
+            padded = np.zeros((h, w), dtype=np.uint8)
+            padded.flat[: len(enc_arr)] = enc_arr
+
+            # Save the ciphertext image directly as a single-channel image.
+            # Do not pass it through reconstruct_image because the original mode/shape no longer apply.
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            Image.fromarray(padded, mode="L").save(output_path)
+            return
 
             # nonce file will contain the IV only
             nonce = iv
@@ -299,13 +327,30 @@ def decrypt_image(
             if len(iv) != 16:
                 raise ValueError("Invalid IV length. Expected 16 bytes for AES-CBC.")
 
-            encrypted_bytes, shape, loaded_mode = _load_ciphertext_and_meta(
-                input_path, ".cbc"
-            )
-            mode = loaded_mode or mode
+            meta_path = _meta_path_for_image_path(input_path)
+            if not meta_path.exists():
+                raise FileNotFoundError(f"Metadata file not found: {meta_path}")
+            meta = json.loads(meta_path.read_text())
+            target_shape = tuple(meta.get("shape", [])) or pixels.shape
+            mode = meta.get("mode", mode)
+
+            # Try loading a separate ciphertext file; if missing, read the ciphertext from the image pixels.
+            try:
+                encrypted_bytes, shape, loaded_mode = _load_ciphertext_and_meta(
+                    input_path, ".cbc"
+                )
+                mode = loaded_mode or mode
+                if shape:
+                    target_shape = shape
+            except FileNotFoundError:
+                # Load ciphertext length from metadata and read pixels from the image file.
+                ciphertext_length = int(meta.get("ciphertext_length", 0))
+
+                enc_pixels, enc_mode = extract_pixels(input_path)
+                encrypted_bytes = enc_pixels.tobytes()[:ciphertext_length]
 
             decrypted = aes_cbc_decrypt_bytes(encrypted_bytes, key, iv)
-            transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(shape)
+            transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(target_shape)
         case "AES_GCM":
             key = derive_aes_key(key_phrase)
             nonce = nonce_path.read_bytes()
