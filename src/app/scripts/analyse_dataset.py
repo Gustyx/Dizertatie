@@ -39,6 +39,7 @@ ALGORITHMS = (
     "HENON_MAP",
 )
 DEFAULT_KEY_PHRASE = "encryptionkey"
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 GLOBAL_SHARED_DIR = ROOT_SRC / "app" / "shared"
 GLOBAL_META_DIR = GLOBAL_SHARED_DIR / "meta_files"
 GLOBAL_NONCE_DIR = GLOBAL_SHARED_DIR / "nonce_files"
@@ -46,12 +47,12 @@ GLOBAL_NONCE_DIR = GLOBAL_SHARED_DIR / "nonce_files"
 
 def _local_dirs(base_dir: Path) -> dict[str, Path]:
     return {
-        "meta": base_dir / "meta_files",
-        "nonce": base_dir / "nonce_files",
-        "encrypted": base_dir / "encrypted",
-        "plain_plus_one_bit": base_dir / "plain_plus_one_bit",
-        "encrypted_plus_one_bit": base_dir / "encrypted_plus_one_bit",
-        "json_output": base_dir / "dataset_analysis_results",
+        "meta": base_dir.parent / "meta_files",
+        "nonce": base_dir.parent / "nonce_files",
+        "encrypted": base_dir.parent / "encrypted",
+        "plain_plus_one_bit": base_dir.parent / "plain_plus_one_bit",
+        "encrypted_plus_one_bit": base_dir.parent / "encrypted_plus_one_bit",
+        "json_output": base_dir.parent / "dataset_analysis_results",
     }
 
 
@@ -80,6 +81,27 @@ def _meta_path(base_dir: Path, image_path: Path) -> Path:
     return _local_dirs(base_dir)["meta"] / f"{image_path.stem}.meta"
 
 
+def _image_token(image_path: Path, dataset_root: Path | None = None) -> str:
+    if dataset_root is None:
+        return image_path.stem
+
+    try:
+        relative_path = image_path.relative_to(dataset_root)
+    except ValueError:
+        return image_path.stem
+
+    token_parts = list(relative_path.with_suffix("").parts)
+    return "__".join(token_parts) if token_parts else image_path.stem
+
+
+def _iter_image_files(folder: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in folder.rglob("*")
+        if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+    )
+
+
 def _make_one_bit_variant(input_path: Path, output_path: Path) -> Path:
     pixels, mode = extract_pixels(input_path)
     arr = np.asarray(pixels, dtype=np.uint8).copy()
@@ -93,97 +115,6 @@ def _make_one_bit_variant(input_path: Path, output_path: Path) -> Path:
 
     reconstruct_image(arr, mode, output_path)
     return output_path
-
-
-def _format_result(title: str, result: dict, percent: bool = False) -> str:
-    suffix = " %" if percent else ""
-    lines = [title]
-    if "per_channel" in result:
-        lines.append("Per channel:")
-        for channel, value in result["per_channel"].items():
-            lines.append(f"  {channel}: {value:.6f}{suffix}")
-    if "grayscale" in result:
-        lines.append(f"Grayscale: {result['grayscale']:.6f}{suffix}")
-    if "overall" in result:
-        lines.append(f"Overall: {result['overall']:.6f}{suffix}")
-    if "blocks" in result:
-        lines.append(
-            f"Blocks used: {result['blocks']} ({result['used_size'][0]}x{result['used_size'][1]} area)"
-        )
-    return "\n".join(lines)
-
-
-def _format_entropy_result(title: str, result: dict) -> str:
-    lines = [title]
-    if "per_channel" in result:
-        lines.append("Per channel:")
-        for channel, value in result["per_channel"].items():
-            lines.append(f"  {channel}: {value:.6f}")
-    if "grayscale" in result:
-        lines.append(f"Grayscale: {result['grayscale']:.6f}")
-    if "overall" in result:
-        lines.append(f"Overall: {result['overall']:.6f}")
-    if "block_entropies" in result:
-        for block_size in sorted(result["block_entropies"]):
-            block_result = result["block_entropies"][block_size]
-            lines.append(f"Block entropy ({block_size}x{block_size}):")
-            if "error" in block_result:
-                lines.append(f"  N/A: {block_result['error']}")
-                continue
-            if "per_channel" in block_result:
-                lines.append("  Per channel:")
-                for channel, value in block_result["per_channel"].items():
-                    lines.append(f"    {channel}: {value:.6f}")
-                lines.append(f"  Overall: {block_result['overall']:.6f}")
-            else:
-                lines.append(f"  Grayscale: {block_result['grayscale']:.6f}")
-            lines.append(
-                f"  Blocks used: {block_result['blocks']} ({block_result['used_size'][0]}x{block_result['used_size'][1]} area)"
-            )
-    return "\n".join(lines)
-
-
-def _format_histogram_result(title: str, result: dict) -> str:
-    lines = [title]
-    if "per_channel" in result:
-        lines.append("Per channel:")
-        for channel, summary in result["per_channel"].items():
-            lines.append(
-                f"  {channel}: peak {summary['peak_intensity']} ({summary['peak_count']} pixels, {summary['peak_percentage']:.2f}% of {summary['total_pixels']})"
-            )
-            lines.append(f"    non-zero bins: {summary['non_zero_bins']}")
-            lines.append(f"    mean intensity: {summary['mean_intensity']:.6f}")
-            chi_p = summary.get("chi2_p")
-            if chi_p is None:
-                lines.append(f"    chi2: {summary.get('chi2'):.3f} (p: N/A)")
-            else:
-                lines.append(f"    chi2: {summary.get('chi2'):.3f} (p: {chi_p:.3e})")
-    if "grayscale" in result:
-        summary = result["grayscale"]
-        lines.append(
-            f"Grayscale peak: {summary['peak_intensity']} ({summary['peak_count']} pixels, {summary['peak_percentage']:.2f}% of {summary['total_pixels']})"
-        )
-        lines.append(f"Non-zero bins: {summary['non_zero_bins']}")
-        lines.append(f"Mean intensity: {summary['mean_intensity']:.6f}")
-        chi_p = summary.get("chi2_p")
-        if chi_p is None:
-            lines.append(f"chi2: {summary.get('chi2'):.3f} (p: N/A)")
-        else:
-            lines.append(f"chi2: {summary.get('chi2'):.3f} (p: {chi_p:.3e})")
-    if "luminance" in result:
-        summary = result["luminance"]
-        lines.append("Luminance:")
-        lines.append(
-            f"  peak: {summary['peak_intensity']} ({summary['peak_count']} pixels, {summary['peak_percentage']:.2f}% of {summary['total_pixels']})"
-        )
-        lines.append(f"  non-zero bins: {summary['non_zero_bins']}")
-        lines.append(f"  mean intensity: {summary['mean_intensity']:.6f}")
-        chi_p = summary.get("chi2_p")
-        if chi_p is None:
-            lines.append(f"  chi2: {summary.get('chi2'):.3f} (p: N/A)")
-        else:
-            lines.append(f"  chi2: {summary.get('chi2'):.3f} (p: {chi_p:.3e})")
-    return "\n".join(lines)
 
 
 def _structured_simple_body(result: dict) -> dict:
@@ -465,6 +396,7 @@ def run_analysis(
     algorithm: str = "AES_CBC",
     key_phrase: str = DEFAULT_KEY_PHRASE,
     output_json: Path | None = None,
+    dataset_root: Path | None = None,
 ) -> dict:
     image_path = image_path.resolve()
     if not image_path.exists():
@@ -474,16 +406,22 @@ def run_analysis(
     if algorithm not in ALGORITHMS:
         raise ValueError(f"Unsupported algorithm: {algorithm}")
 
-    base_dir = image_path.parent.parent
+    base_dir = (
+        dataset_root.resolve() if dataset_root is not None else image_path.parent.parent
+    )
     dirs = _local_dirs(base_dir)
     for folder in dirs.values():
         folder.mkdir(parents=True, exist_ok=True)
 
-    encrypted_path = (
-        dirs["encrypted"]
-        / f"{algorithm.lower()}_enc_{image_path.stem}{image_path.suffix}"
+    image_token = _image_token(
+        image_path, base_dir if dataset_root is not None else None
     )
-    plus_one_bit_plain_path = dirs["plain_plus_one_bit"] / image_path.name
+
+    encrypted_path = (
+        dirs["encrypted"] / f"{algorithm.lower()}_enc_{image_token}{image_path.suffix}"
+    )
+    plus_one_bit_plain_path = dirs["plain_plus_one_bit"] / image_token
+    plus_one_bit_plain_path = plus_one_bit_plain_path.with_suffix(image_path.suffix)
     encrypted_plus_one_bit_path = dirs["encrypted_plus_one_bit"] / encrypted_path.name
 
     encrypt_image(image_path, encrypted_path, key_phrase, algorithm=algorithm)
@@ -524,7 +462,7 @@ def run_analysis(
 
     if output_json is None:
         output_json = (
-            dirs["json_output"] / f"{algorithm.lower()}_{image_path.stem}_analysis.json"
+            dirs["json_output"] / f"{algorithm.lower()}_{image_token}_analysis.json"
         )
 
     output_json = output_json.resolve()
@@ -541,9 +479,13 @@ def run_analysis(
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        description="Encrypt a single image and run the full analysis suite, saving the results as JSON."
+        description="Encrypt one image or every image in a folder and run the full analysis suite, saving the results as JSON."
     )
-    parser.add_argument("image_path", type=Path, help="Path to the image to analyze")
+    parser.add_argument(
+        "input_path",
+        type=Path,
+        help="Path to an image or a folder of images to analyze",
+    )
     parser.add_argument(
         "--algorithm",
         choices=ALGORITHMS,
@@ -559,29 +501,50 @@ def main(argv=None) -> int:
         "--output-json",
         type=Path,
         default=None,
-        help="Optional JSON output path; defaults next to the generated files",
+        help="Optional JSON output path for single-image mode; folder mode writes per-image JSON files automatically",
     )
     args = parser.parse_args(argv)
+
+    input_path = args.input_path.resolve()
+    if not input_path.exists():
+        print(f"Error: input path not found: {input_path}")
+        return 2
+
+    if input_path.is_dir():
+        image_paths = _iter_image_files(input_path)
+        if not image_paths:
+            print(f"Error: no supported images found in folder: {input_path}")
+            return 2
+        dataset_root = input_path
+    else:
+        image_paths = [input_path]
+        dataset_root = input_path.parent.parent
 
     reports: list[dict] = []
 
     algorithms_to_run = (args.algorithm,) if args.algorithm is not None else ALGORITHMS
 
-    for alg in algorithms_to_run:
-        try:
-            # Only pass output_json when a single algorithm was requested;
-            # when running all algorithms, let each invocation choose its own path.
-            out_json = args.output_json if args.algorithm is not None else None
-            print(f"Running {alg}")
-            report = run_analysis(
-                args.image_path,
-                algorithm=alg,
-                key_phrase=args.key_phrase,
-                output_json=out_json,
-            )
-            reports.append({"algorithm": alg, "report": report})
-        except Exception as exc:
-            print(f"Error running {alg}: {exc}")
+    for image_path in image_paths:
+        for alg in algorithms_to_run:
+            try:
+                out_json = (
+                    args.output_json
+                    if len(image_paths) == 1 and args.algorithm is not None
+                    else None
+                )
+                print(f"Running {alg} on {image_path.name}")
+                report = run_analysis(
+                    image_path,
+                    algorithm=alg,
+                    key_phrase=args.key_phrase,
+                    output_json=out_json,
+                    dataset_root=dataset_root,
+                )
+                reports.append(
+                    {"image": str(image_path), "algorithm": alg, "report": report}
+                )
+            except Exception as exc:
+                print(f"Error running {alg} on {image_path}: {exc}")
 
     return 0
 

@@ -43,7 +43,12 @@ def reconstruct_image(pixel_array: np.ndarray, mode: str, output_path: Path) -> 
 
 def add_one_bit_to_pixel(image_path: Path) -> Path:
     pixels, mode = extract_pixels(image_path)
-    pixels[0, 0, 0] += 1
+    if pixels.ndim == 2:
+        pixels[0, 0] = (int(pixels[0, 0]) + 1) % 256
+    elif pixels.ndim == 3 and pixels.shape[2] >= 1:
+        pixels[0, 0, 0] = (int(pixels[0, 0, 0]) + 1) % 256
+    else:
+        raise ValueError("Image must be grayscale or RGB")
     output_path = image_path.parent.parent / "plain_plus_one_bit" / image_path.name
     reconstruct_image(pixels, mode, output_path)
 
