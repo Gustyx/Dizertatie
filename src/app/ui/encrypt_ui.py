@@ -427,7 +427,7 @@ def build_algorithm_menu(parent) -> None:
     make_btn("AES_CBC")
     make_btn("AES_GCM")
     make_btn("AES_CCM")
-    make_btn("DES")
+    make_btn("Triple_DES")
     make_btn("Custom_AES")
     make_btn("Logistic_Map")
     make_btn("Henon_Map")
