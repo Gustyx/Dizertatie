@@ -8,3 +8,6 @@ venv/
 *.npz
 *.dcm
 *.csv
+*.json
+*.meta
+*.nonce

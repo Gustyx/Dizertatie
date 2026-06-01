@@ -473,6 +473,8 @@ def run_analysis(
 
     try:
         plus_one_bit_plain_path.unlink(missing_ok=True)
+        encrypted_plus_one_bit_path.unlink(missing_ok=True)
+        encrypted_path.unlink(missing_ok=True)
     except Exception:
         pass
 
@@ -528,7 +530,7 @@ def main(argv=None) -> int:
 
     start = time.perf_counter()
 
-    for image_path in image_paths[:10]:
+    for image_path in image_paths:
         for alg in algorithms_to_run:
             try:
                 out_json = (
