@@ -5,6 +5,8 @@ import json
 import shutil
 import sys
 from pathlib import Path
+import time
+from tracemalloc import start
 
 import numpy as np
 
@@ -524,7 +526,9 @@ def main(argv=None) -> int:
 
     algorithms_to_run = (args.algorithm,) if args.algorithm is not None else ALGORITHMS
 
-    for image_path in image_paths:
+    start = time.perf_counter()
+
+    for image_path in image_paths[:10]:
         for alg in algorithms_to_run:
             try:
                 out_json = (
@@ -546,6 +550,9 @@ def main(argv=None) -> int:
             except Exception as exc:
                 print(f"Error running {alg} on {image_path}: {exc}")
 
+    end = time.perf_counter()
+
+    print(f"Execution time: {end - start:.3f} seconds")
     return 0
 
 
