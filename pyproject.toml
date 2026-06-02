@@ -3,6 +3,9 @@ name = "image-encryption-app"
 version = "0.1.0"
 description = "Image encryption analysis project"
 requires-python = ">=3.10"
+dependencies = [
+	"matplotlib>=3.10",
+]
 
 [build-system]
 requires = ["setuptools>=61"]
@@ -13,3 +16,6 @@ where = ["src"]
 
 [project.scripts]
 run-app = "app.main:main"
+generate-histogram-plots = "app.plots.generate_histogram_plots:main"
+generate-correlation-plots = "app.plots.generate_correlation_plots:main"
+generate-bitplane-plots = "app.plots.generate_bitplane_plots:main"
