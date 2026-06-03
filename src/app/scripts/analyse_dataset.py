@@ -118,9 +118,14 @@ def _make_one_bit_variant(input_path: Path, output_path: Path) -> Path:
     return output_path
 
 
-def _image_metadata(image_path: Path) -> dict[str, object]:
+def _image_metadata(image_path: Path, normalize_rgb: bool = False) -> dict[str, object]:
     pixels, _ = extract_pixels(image_path)
     arr = np.asarray(pixels)
+
+    if normalize_rgb:
+        from PIL import Image
+
+        arr = np.asarray(Image.fromarray(arr).convert("RGB"), dtype=np.uint8)
 
     if arr.ndim == 2:
         shape = f"{arr.shape[0]}x{arr.shape[1]}"
@@ -132,6 +137,7 @@ def _image_metadata(image_path: Path) -> dict[str, object]:
     return {
         "shape": shape,
         "file_size_bytes": int(image_path.stat().st_size),
+        "memory_size_bytes": int(arr.nbytes),
     }
 
 
@@ -442,6 +448,20 @@ def run_analysis(
     plus_one_bit_plain_path = plus_one_bit_plain_path.with_suffix(image_path.suffix)
     encrypted_plus_one_bit_path = dirs["encrypted_plus_one_bit"] / encrypted_path.name
 
+    # Create an RGB-normalized copy of the plain image for analysis comparisons
+    normalized_plain_path = (
+        dirs["plain_plus_one_bit"] / f"{image_token}_rgb{image_path.suffix}"
+    )
+    try:
+        from PIL import Image
+
+        normalized_plain_path.parent.mkdir(parents=True, exist_ok=True)
+        with Image.open(image_path) as im:
+            im.convert("RGB").save(normalized_plain_path)
+    except Exception:
+        # Fallback to using the original image if conversion fails
+        normalized_plain_path = image_path
+
     start = time.perf_counter()
     encrypt_image(image_path, encrypted_path, key_phrase, algorithm=algorithm)
     end = time.perf_counter()
@@ -450,7 +470,8 @@ def run_analysis(
     encrypted_meta_path = _meta_path(base_dir, encrypted_path)
     _copy_if_exists(encrypted_nonce_path, _local_nonce_path(base_dir, encrypted_path))
     _copy_if_exists(encrypted_meta_path, _local_meta_path(base_dir, encrypted_path))
-    _make_one_bit_variant(image_path, plus_one_bit_plain_path)
+    # Create plus-one-bit variant from the RGB-normalized plain image
+    _make_one_bit_variant(normalized_plain_path, plus_one_bit_plain_path)
     encrypt_image(
         plus_one_bit_plain_path,
         encrypted_plus_one_bit_path,
@@ -471,10 +492,11 @@ def run_analysis(
         "input_image": str(image_path),
         "algorithm": algorithm,
         "encryption_time_seconds": encryption_time,
-        "plain_image": _image_metadata(image_path),
-        "encrypted_image": _image_metadata(encrypted_path),
+        # Record metadata for the RGB-normalized plain image and the encrypted output
+        "plain_image": _image_metadata(normalized_plain_path, normalize_rgb=True),
+        "encrypted_image": _image_metadata(encrypted_path, normalize_rgb=True),
         "analysis_sections": _build_ui_sections(
-            encrypted_path, image_path, encrypted_plus_one_bit_path
+            encrypted_path, normalized_plain_path, encrypted_plus_one_bit_path
         ),
         "analysis_text": "\n\n".join(
             f"{section['category']}\n{section['title']}\n{_body_to_text(section['title'], section['body'], percent=section['title'] in {'NPCR results', 'UACI results'})}"

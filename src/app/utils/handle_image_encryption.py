@@ -182,13 +182,22 @@ def _load_ciphertext_from_image(input_path: Path) -> bytes:
     return encrypted_pixels.tobytes()[:ciphertext_length]
 
 
+def _extract_rgb_pixels(image_path: Path) -> tuple[np.ndarray, str]:
+    pixels, _ = extract_pixels(image_path)
+    if pixels.ndim == 3 and pixels.shape[2] == 3:
+        return pixels, "RGB"
+
+    rgb_pixels = np.asarray(Image.fromarray(pixels).convert("RGB"), dtype=np.uint8)
+    return rgb_pixels, "RGB"
+
+
 def encrypt_image(
     input_path: Path,
     output_path: Path,
     key_phrase: str,
     algorithm: str = "AES_CTR",
 ) -> None:
-    pixels, mode = extract_pixels(input_path)
+    pixels, mode = _extract_rgb_pixels(input_path)
     flat = pixels.astype(np.uint8).tobytes()
 
     match algorithm.upper():
