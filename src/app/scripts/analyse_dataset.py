@@ -6,7 +6,6 @@ import shutil
 import sys
 from pathlib import Path
 import time
-from tracemalloc import start
 
 import numpy as np
 
@@ -117,6 +116,23 @@ def _make_one_bit_variant(input_path: Path, output_path: Path) -> Path:
 
     reconstruct_image(arr, mode, output_path)
     return output_path
+
+
+def _image_metadata(image_path: Path) -> dict[str, object]:
+    pixels, _ = extract_pixels(image_path)
+    arr = np.asarray(pixels)
+
+    if arr.ndim == 2:
+        shape = f"{arr.shape[0]}x{arr.shape[1]}"
+    elif arr.ndim >= 3:
+        shape = f"{arr.shape[0]}x{arr.shape[1]}x{arr.shape[2]}"
+    else:
+        shape = "unknown"
+
+    return {
+        "shape": shape,
+        "file_size_bytes": int(image_path.stat().st_size),
+    }
 
 
 def _structured_simple_body(result: dict) -> dict:
@@ -426,7 +442,10 @@ def run_analysis(
     plus_one_bit_plain_path = plus_one_bit_plain_path.with_suffix(image_path.suffix)
     encrypted_plus_one_bit_path = dirs["encrypted_plus_one_bit"] / encrypted_path.name
 
+    start = time.perf_counter()
     encrypt_image(image_path, encrypted_path, key_phrase, algorithm=algorithm)
+    end = time.perf_counter()
+    encryption_time = f"{end - start:.3f}"
     encrypted_nonce_path = _nonce_path(base_dir, encrypted_path)
     encrypted_meta_path = _meta_path(base_dir, encrypted_path)
     _copy_if_exists(encrypted_nonce_path, _local_nonce_path(base_dir, encrypted_path))
@@ -451,6 +470,9 @@ def run_analysis(
     analysis = {
         "input_image": str(image_path),
         "algorithm": algorithm,
+        "encryption_time_seconds": encryption_time,
+        "plain_image": _image_metadata(image_path),
+        "encrypted_image": _image_metadata(encrypted_path),
         "analysis_sections": _build_ui_sections(
             encrypted_path, image_path, encrypted_plus_one_bit_path
         ),

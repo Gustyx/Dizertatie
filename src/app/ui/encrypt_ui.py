@@ -36,6 +36,7 @@ from .analyse_ui import (
     format_result,
     build_analyse_ui,
 )
+from .plots_ui import open_plots_window
 
 try:
     from tkinterdnd2 import TkinterDnD
@@ -348,7 +349,7 @@ def on_decrypt(canvas: tk.Canvas) -> None:
             output_name = f"{alg_prefix}_dec_{image_name}"
         else:
             output_name = f"dec_{output_name}"
- 
+
         decrypted_dir = input_path.parent.parent / "decrypted"
         decrypted_dir.mkdir(parents=True, exist_ok=True)
         output_path = decrypted_dir / output_name
@@ -399,9 +400,19 @@ def build_buttons(frame, img_box) -> None:
         width=12,
         command=lambda: on_decrypt(img_box),
     )
+    plots_btn = tk.Button(
+        ui_state.action_buttons_frame,
+        text="View plots",
+        width=12,
+        command=lambda: open_plots_window(
+            ui_state.selected_image_path,
+            parent=frame.winfo_toplevel(),
+        ),
+    )
     encrypt_btn.pack(side="left", padx=6)
     encrypt_analysis_btn.pack(side="left", padx=6)
     decrypt_btn.pack(side="left", padx=6)
+    plots_btn.pack(side="left", padx=6)
 
 
 def build_algorithm_menu(parent) -> None:
