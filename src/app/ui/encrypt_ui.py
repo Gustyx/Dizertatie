@@ -312,15 +312,9 @@ def on_decrypt(canvas: tk.Canvas) -> None:
         if stem.lower().startswith("aes-cbc_") or stem.lower().startswith("aes_cbc_"):
             detected_alg = "AES_CBC"
             print("Detected AES-CBC from filename prefix")
-        elif stem.lower().startswith("aes-gcm_") or stem.lower().startswith("aes_gcm_"):
-            detected_alg = "AES_GCM"
-            print("Detected AES-GCM from filename prefix")
         elif stem.lower().startswith("chacha20_") or stem.lower().startswith("chacha_"):
             detected_alg = "CHACHA20"
             print("Detected ChaCha20 from filename prefix")
-        elif stem.lower().startswith("aes-ccm_") or stem.lower().startswith("aes_ccm_"):
-            detected_alg = "AES_CCM"
-            print("Detected AES-CCM from filename prefix")
         elif stem.lower().startswith("aes-ctr_") or stem.lower().startswith("aes_ctr_"):
             detected_alg = "AES_CTR"
         elif stem.lower().startswith("des_"):
@@ -434,13 +428,11 @@ def build_algorithm_menu(parent) -> None:
 
     make_btn("AES_CTR")
     make_btn("AES_CBC")
-    make_btn("AES_GCM")
-    make_btn("AES_CCM")
     make_btn("Triple_DES")
-    make_btn("Custom_AES")
+    make_btn("ChaCha20")
     make_btn("Logistic_Map")
     make_btn("Henon_Map")
-    make_btn("ChaCha20")
+    make_btn("Custom_AES")
 
     # initialize visuals
     def set_algorithm(display_name: str):

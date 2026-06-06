@@ -9,10 +9,6 @@ from ..algorithms import (
     derive_aes_key,
     aes_cbc_encrypt_bytes,
     aes_cbc_decrypt_bytes,
-    aes_gcm_encrypt_bytes,
-    aes_gcm_decrypt_bytes,
-    aes_ccm_encrypt_bytes,
-    aes_ccm_decrypt_bytes,
     chacha20_encrypt_bytes,
     chacha20_decrypt_bytes,
     apply_custom_aes_decrypt,
@@ -205,46 +201,6 @@ def encrypt_image(
             key = derive_aes_key(key_phrase)
             nonce = _read_or_create_nonce(output_path, (16,), 16, "nonce")
             transformed = aes_ctr_transform(pixels, key, nonce)
-        case "TRIPLE_DES":
-            key = derive_des_key(key_phrase)
-            nonce = _read_or_create_nonce(output_path, (8,), 8, "nonce")
-            transformed = des_ctr_transform(pixels, key, nonce)
-        case "CUSTOM_AES":
-            # Use the provided key phrase (padded/truncated to 16 chars) for the custom AES
-            key = (key_phrase or "").ljust(16)[:16]
-
-            # Convert numpy pixel array to a flat list[int] as expected by custom AES
-            flat_pixels = pixels.flatten().tolist()
-            print(len(flat_pixels))
-            transformed_list = apply_custom_aes_v4_encrypt(flat_pixels, key)
-            print(len(transformed_list))
-
-            if len(transformed_list) % 4 != 0:
-                transformed_list.extend([0] * (4 - len(transformed_list) % 4))
-
-            # Convert back to a numpy array with original shape and dtype for reconstruction
-            print(pixels.shape)
-            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
-                (304, 921, 4)
-            )
-
-            # Custom AES does not use a nonce in this implementation; write an empty nonce
-            nonce = b""
-        case "LOGISTIC_MAP":
-            # Logistic map chaotic encryption uses the key phrase directly.
-            flat_pixels = pixels.flatten().tolist()
-            transformed_list = apply_logistic_map_encrypt(flat_pixels, key_phrase)
-            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
-                pixels.shape
-            )
-            nonce = b""
-        case "HENON_MAP":
-            flat_pixels = pixels.flatten().tolist()
-            transformed_list = apply_henon_map_encrypt(flat_pixels, key_phrase)
-            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
-                pixels.shape
-            )
-            nonce = b""
         case "AES_CBC":
             # AES-CBC: store IV in nonce file and full ciphertext in a .cbc file.
             key = derive_aes_key(key_phrase)
@@ -270,51 +226,10 @@ def encrypt_image(
 
             # nonce file will contain the IV only
             nonce = iv
-
-        case "AES_GCM":
-            # AES-GCM: store nonce in nonce file and embed ciphertext in the output image.
-            key = derive_aes_key(key_phrase)
-
-            nonce = _read_or_create_nonce(output_path, (12, 16), 12, "nonce")
-
-            encrypted_bytes = aes_gcm_encrypt_bytes(flat, key, nonce)
-
-            _write_ciphertext_and_meta(
-                output_path, None, encrypted_bytes, pixels, mode, len(flat)
-            )
-
-            _delete_legacy_ciphertext_sidecars(output_path, (".gcm",))
-            _save_ciphertext_image(
-                output_path, encrypted_bytes, pixels.shape, channels=3
-            )
-            return
-        case "AES_CCM":
-            # AES-CCM: store nonce in nonce file and embed ciphertext in the output image.
-            key = derive_aes_key(key_phrase)
-
-            nonce = _read_or_create_nonce(output_path, tuple(range(7, 14)), 11, "nonce")
-
-            # Check AES-CCM message length capacity for the nonce length.
-            # q = 15 - nonce_len; max_size = 2^(8*q)-1
-            q = 15 - len(nonce)
-            max_size = (1 << (8 * q)) - 1
-            if len(flat) > max_size:
-                raise ValueError(
-                    f"Image too large for existing AES-CCM nonce (len={len(nonce)}). "
-                    f"Max message size for this nonce is {max_size} bytes; image is {len(flat)} bytes. "
-                    "Delete the .nonce file to regenerate a larger-capacity nonce."
-                )
-            encrypted_bytes = aes_ccm_encrypt_bytes(flat, key, nonce)
-
-            _write_ciphertext_and_meta(
-                output_path, None, encrypted_bytes, pixels, mode, len(flat)
-            )
-
-            _delete_legacy_ciphertext_sidecars(output_path, (".ccm",))
-            _save_ciphertext_image(
-                output_path, encrypted_bytes, pixels.shape, channels=3
-            )
-            return
+        case "TRIPLE_DES":
+            key = derive_des_key(key_phrase)
+            nonce = _read_or_create_nonce(output_path, (8,), 8, "nonce")
+            transformed = des_ctr_transform(pixels, key, nonce)
         case "CHACHA20":
             # ChaCha20 stream cipher (no auth). Embed ciphertext in the output image.
             key = derive_aes_key(key_phrase)
@@ -332,6 +247,42 @@ def encrypt_image(
                 output_path, encrypted_bytes, pixels.shape, channels=3
             )
             return
+        case "LOGISTIC_MAP":
+            # Logistic map chaotic encryption uses the key phrase directly.
+            flat_pixels = pixels.flatten().tolist()
+            transformed_list = apply_logistic_map_encrypt(flat_pixels, key_phrase)
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
+                pixels.shape
+            )
+            nonce = b""
+        case "HENON_MAP":
+            flat_pixels = pixels.flatten().tolist()
+            transformed_list = apply_henon_map_encrypt(flat_pixels, key_phrase)
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
+                pixels.shape
+            )
+            nonce = b""
+        case "CUSTOM_AES":
+            # Use the provided key phrase (padded/truncated to 16 chars) for the custom AES
+            key = (key_phrase or "").ljust(16)[:16]
+
+            # Convert numpy pixel array to a flat list[int] as expected by custom AES
+            flat_pixels = pixels.flatten().tolist()
+            print(len(flat_pixels))
+            transformed_list = apply_custom_aes_v4_encrypt(flat_pixels, key)
+            print(len(transformed_list))
+
+            if len(transformed_list) % 4 != 0:
+                transformed_list.extend([0] * (4 - len(transformed_list) % 4))
+
+            # Convert back to a numpy array with original shape and dtype for reconstruction
+            print(pixels.shape)
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
+                (304, 921, 4)
+            )
+
+            # Custom AES does not use a nonce in this implementation; write an empty nonce
+            nonce = b""
         case _:
             raise ValueError(f"Unsupported algorithm: {algorithm}")
 
@@ -344,11 +295,8 @@ def decrypt_image(
     key_phrase: str,
     algorithm: str = "AES_CTR",
 ) -> None:
-    """Decrypt AES-CTR or DES-CTR encrypted image pixels using the stored nonce file."""
 
     nonce_path = _nonce_path_for_image_path(input_path)
-    # if not nonce_path.exists():
-    # raise FileNotFoundError(f"Nonce file not found: {nonce_path}")
 
     pixels, mode = extract_pixels(input_path)
 
@@ -360,12 +308,6 @@ def decrypt_image(
             if len(nonce) != 16:
                 raise ValueError("Invalid nonce length. Expected 16 bytes for AES-CTR.")
             transformed = aes_ctr_transform(pixels, key, nonce)
-        case "TRIPLE_DES":
-            key = derive_des_key(key_phrase)
-            nonce = nonce_path.read_bytes()
-            if len(nonce) != 8:
-                raise ValueError("Invalid nonce length. Expected 8 bytes for DES-CTR.")
-            transformed = des_ctr_transform(pixels, key, nonce)
         case "AES_CBC":
             key = derive_aes_key(key_phrase)
             iv = nonce_path.read_bytes()
@@ -396,58 +338,12 @@ def decrypt_image(
 
             decrypted = aes_cbc_decrypt_bytes(encrypted_bytes, key, iv)
             transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(target_shape)
-        case "AES_GCM":
-            key = derive_aes_key(key_phrase)
+        case "TRIPLE_DES":
+            key = derive_des_key(key_phrase)
             nonce = nonce_path.read_bytes()
-            if len(nonce) not in (12, 16):
-                raise ValueError("Invalid nonce length. Expected 12 bytes for AES-GCM.")
-
-            meta_path = _meta_path_for_image_path(input_path)
-            if not meta_path.exists():
-                raise FileNotFoundError(f"Metadata file not found: {meta_path}")
-            meta = json.loads(meta_path.read_text())
-            target_shape = tuple(meta.get("shape", [])) or pixels.shape
-            mode = meta.get("mode", mode)
-
-            try:
-                encrypted_bytes, shape, loaded_mode = _load_ciphertext_and_meta(
-                    input_path, ".gcm"
-                )
-                mode = loaded_mode or mode
-                if shape:
-                    target_shape = shape
-            except FileNotFoundError:
-                encrypted_bytes = _load_ciphertext_from_image(input_path)
-
-            decrypted = aes_gcm_decrypt_bytes(encrypted_bytes, key, nonce)
-            transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(target_shape)
-        case "AES_CCM":
-            key = derive_aes_key(key_phrase)
-            nonce = nonce_path.read_bytes()
-            if not (7 <= len(nonce) <= 13):
-                raise ValueError(
-                    "Invalid nonce length. Expected 7..13 bytes for AES-CCM."
-                )
-
-            meta_path = _meta_path_for_image_path(input_path)
-            if not meta_path.exists():
-                raise FileNotFoundError(f"Metadata file not found: {meta_path}")
-            meta = json.loads(meta_path.read_text())
-            target_shape = tuple(meta.get("shape", [])) or pixels.shape
-            mode = meta.get("mode", mode)
-
-            try:
-                encrypted_bytes, shape, loaded_mode = _load_ciphertext_and_meta(
-                    input_path, ".ccm"
-                )
-                mode = loaded_mode or mode
-                if shape:
-                    target_shape = shape
-            except FileNotFoundError:
-                encrypted_bytes = _load_ciphertext_from_image(input_path)
-
-            decrypted = aes_ccm_decrypt_bytes(encrypted_bytes, key, nonce)
-            transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(target_shape)
+            if len(nonce) != 8:
+                raise ValueError("Invalid nonce length. Expected 8 bytes for DES-CTR.")
+            transformed = des_ctr_transform(pixels, key, nonce)
         case "CHACHA20":
             key = derive_aes_key(key_phrase)
             nonce = nonce_path.read_bytes()
@@ -455,7 +351,6 @@ def decrypt_image(
                 raise ValueError(
                     "Invalid nonce length. Expected 16 bytes for ChaCha20."
                 )
-
             meta_path = _meta_path_for_image_path(input_path)
             if not meta_path.exists():
                 raise FileNotFoundError(f"Metadata file not found: {meta_path}")
@@ -475,6 +370,18 @@ def decrypt_image(
 
             decrypted = chacha20_decrypt_bytes(encrypted_bytes, key, nonce)
             transformed = np.frombuffer(decrypted, dtype=np.uint8).reshape(target_shape)
+        case "LOGISTIC_MAP":
+            flat_pixels = pixels.flatten().tolist()
+            transformed_list = apply_logistic_map_decrypt(flat_pixels, key_phrase)
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
+                pixels.shape
+            )
+        case "HENON_MAP":
+            flat_pixels = pixels.flatten().tolist()
+            transformed_list = apply_henon_map_decrypt(flat_pixels, key_phrase)
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
+                pixels.shape
+            )
         case "CUSTOM_AES":
             # Use the provided key phrase (padded/truncated to 16 chars) for the custom AES
             key = (key_phrase or "").ljust(16)[:16]
@@ -485,20 +392,6 @@ def decrypt_image(
             transformed_list = apply_custom_aes_v4_decrypt(flat_pixels, key)
 
             # Convert back to a numpy array with original shape and dtype for reconstruction
-            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
-                pixels.shape
-            )
-
-        case "LOGISTIC_MAP":
-            flat_pixels = pixels.flatten().tolist()
-            transformed_list = apply_logistic_map_decrypt(flat_pixels, key_phrase)
-            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
-                pixels.shape
-            )
-
-        case "HENON_MAP":
-            flat_pixels = pixels.flatten().tolist()
-            transformed_list = apply_henon_map_decrypt(flat_pixels, key_phrase)
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(
                 pixels.shape
             )
