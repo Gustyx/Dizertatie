@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 from pathlib import Path
 import time
@@ -26,14 +25,11 @@ from app.analysis_methods import (
     vertical_pixel_correlation,
     diagonal_pixel_correlation,
 )
-from app.utils import encrypt_image, extract_pixels
-from app.utils.handle_image_pixels import reconstruct_image
+from app.utils import encrypt_image, extract_pixels, add_one_bit_to_pixel
 
 ALGORITHMS = (
     "AES_CTR",
     "AES_CBC",
-    "AES_GCM",
-    "AES_CCM",
     "TRIPLE_DES",
     "CHACHA20",
     "LOGISTIC_MAP",
@@ -41,37 +37,17 @@ ALGORITHMS = (
 )
 DEFAULT_KEY_PHRASE = "encryptionkey"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
-GLOBAL_SHARED_DIR = ROOT_SRC / "app" / "shared"
-GLOBAL_META_DIR = GLOBAL_SHARED_DIR / "meta_files"
-GLOBAL_NONCE_DIR = GLOBAL_SHARED_DIR / "nonce_files"
 
 
 def _local_dirs(base_dir: Path) -> dict[str, Path]:
     return {
-        "meta": base_dir.parent / "meta_files",
-        "nonce": base_dir.parent / "nonce_files",
-        "encrypted": base_dir.parent / "encrypted",
-        "plain_plus_one_bit": base_dir.parent / "plain_plus_one_bit",
-        "encrypted_plus_one_bit": base_dir.parent / "encrypted_plus_one_bit",
-        "json_output": base_dir.parent / "dataset_analysis_results",
+        "meta": base_dir / "meta_files",
+        "nonce": base_dir / "nonce_files",
+        "encrypted": base_dir / "encrypted",
+        "plain_plus_one_bit": base_dir / "plain_plus_one_bit",
+        "encrypted_plus_one_bit": base_dir / "encrypted_plus_one_bit",
+        "json_output": base_dir / "dataset_analysis_results",
     }
-
-
-def _copy_if_exists(source: Path, target: Path) -> None:
-    if not source.exists():
-        return
-    if source.resolve(strict=False) == target.resolve(strict=False):
-        return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
-
-
-def _local_nonce_path(base_dir: Path, image_path: Path) -> Path:
-    return _local_dirs(base_dir)["nonce"] / f"{image_path.stem}.nonce"
-
-
-def _local_meta_path(base_dir: Path, image_path: Path) -> Path:
-    return _local_dirs(base_dir)["meta"] / f"{image_path.stem}.meta"
 
 
 def _nonce_path(base_dir: Path, image_path: Path) -> Path:
@@ -82,40 +58,12 @@ def _meta_path(base_dir: Path, image_path: Path) -> Path:
     return _local_dirs(base_dir)["meta"] / f"{image_path.stem}.meta"
 
 
-def _image_token(image_path: Path, dataset_root: Path | None = None) -> str:
-    if dataset_root is None:
-        return image_path.stem
-
-    try:
-        relative_path = image_path.relative_to(dataset_root)
-    except ValueError:
-        return image_path.stem
-
-    token_parts = list(relative_path.with_suffix("").parts)
-    return "__".join(token_parts) if token_parts else image_path.stem
-
-
 def _iter_image_files(folder: Path) -> list[Path]:
     return sorted(
         path
         for path in folder.rglob("*")
         if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
     )
-
-
-def _make_one_bit_variant(input_path: Path, output_path: Path) -> Path:
-    pixels, mode = extract_pixels(input_path)
-    arr = np.asarray(pixels, dtype=np.uint8).copy()
-
-    if arr.ndim == 2:
-        arr[0, 0] = (int(arr[0, 0]) + 1) % 256
-    elif arr.ndim == 3 and arr.shape[2] >= 1:
-        arr[0, 0, 0] = (int(arr[0, 0, 0]) + 1) % 256
-    else:
-        raise ValueError("Image must be grayscale or RGB")
-
-    reconstruct_image(arr, mode, output_path)
-    return output_path
 
 
 def _image_metadata(image_path: Path, normalize_rgb: bool = False) -> dict[str, object]:
@@ -405,7 +353,6 @@ def _jsonable(value):
         return value.tolist()
     if isinstance(value, (np.integer,)):
         return int(value)
-    # Serialize floats as fixed-point strings to avoid scientific notation
     if isinstance(value, float):
         return format(value, ".6f")
     if isinstance(value, (np.floating,)):
@@ -437,30 +384,11 @@ def run_analysis(
     for folder in dirs.values():
         folder.mkdir(parents=True, exist_ok=True)
 
-    image_token = _image_token(
-        image_path, base_dir if dataset_root is not None else None
-    )
-
     encrypted_path = (
-        dirs["encrypted"] / f"{algorithm.lower()}_enc_{image_token}{image_path.suffix}"
+        dirs["encrypted"] / f"{algorithm.lower()}_enc_{image_path.stem}{image_path.suffix}"
     )
-    plus_one_bit_plain_path = dirs["plain_plus_one_bit"] / image_token
-    plus_one_bit_plain_path = plus_one_bit_plain_path.with_suffix(image_path.suffix)
+    plus_one_bit_plain_path = dirs["plain_plus_one_bit"] / f"{image_path.stem}{image_path.suffix}"
     encrypted_plus_one_bit_path = dirs["encrypted_plus_one_bit"] / encrypted_path.name
-
-    # Create an RGB-normalized copy of the plain image for analysis comparisons
-    normalized_plain_path = (
-        dirs["plain_plus_one_bit"] / f"{image_token}_rgb{image_path.suffix}"
-    )
-    try:
-        from PIL import Image
-
-        normalized_plain_path.parent.mkdir(parents=True, exist_ok=True)
-        with Image.open(image_path) as im:
-            im.convert("RGB").save(normalized_plain_path)
-    except Exception:
-        # Fallback to using the original image if conversion fails
-        normalized_plain_path = image_path
 
     start = time.perf_counter()
     encrypt_image(image_path, encrypted_path, key_phrase, algorithm=algorithm)
@@ -468,24 +396,11 @@ def run_analysis(
     encryption_time = f"{end - start:.3f}"
     encrypted_nonce_path = _nonce_path(base_dir, encrypted_path)
     encrypted_meta_path = _meta_path(base_dir, encrypted_path)
-    _copy_if_exists(encrypted_nonce_path, _local_nonce_path(base_dir, encrypted_path))
-    _copy_if_exists(encrypted_meta_path, _local_meta_path(base_dir, encrypted_path))
-    # Create plus-one-bit variant from the RGB-normalized plain image
-    _make_one_bit_variant(normalized_plain_path, plus_one_bit_plain_path)
     encrypt_image(
         plus_one_bit_plain_path,
         encrypted_plus_one_bit_path,
         key_phrase,
         algorithm=algorithm,
-    )
-    plus_one_bit_nonce_path = _nonce_path(base_dir, encrypted_plus_one_bit_path)
-    _copy_if_exists(
-        plus_one_bit_nonce_path,
-        _local_nonce_path(base_dir, encrypted_plus_one_bit_path),
-    )
-    _copy_if_exists(
-        _meta_path(base_dir, encrypted_plus_one_bit_path),
-        _local_meta_path(base_dir, encrypted_plus_one_bit_path),
     )
 
     analysis = {
@@ -493,10 +408,10 @@ def run_analysis(
         "algorithm": algorithm,
         "encryption_time_seconds": encryption_time,
         # Record metadata for the RGB-normalized plain image and the encrypted output
-        "plain_image": _image_metadata(normalized_plain_path, normalize_rgb=True),
+        "plain_image": _image_metadata(image_path, normalize_rgb=True),
         "encrypted_image": _image_metadata(encrypted_path, normalize_rgb=True),
         "analysis_sections": _build_ui_sections(
-            encrypted_path, normalized_plain_path, encrypted_plus_one_bit_path
+            encrypted_path, image_path, encrypted_plus_one_bit_path
         ),
         "analysis_text": "\n\n".join(
             f"{section['category']}\n{section['title']}\n{_body_to_text(section['title'], section['body'], percent=section['title'] in {'NPCR results', 'UACI results'})}"
@@ -508,7 +423,7 @@ def run_analysis(
 
     if output_json is None:
         output_json = (
-            dirs["json_output"] / f"{algorithm.lower()}_{image_token}_analysis.json"
+            dirs["json_output"] / f"{algorithm.lower()}_{image_path.stem}_analysis.json"
         )
 
     output_json = output_json.resolve()
@@ -516,9 +431,11 @@ def run_analysis(
     output_json.write_text(json.dumps(_jsonable(analysis), indent=2), encoding="utf-8")
 
     try:
-        plus_one_bit_plain_path.unlink(missing_ok=True)
         encrypted_plus_one_bit_path.unlink(missing_ok=True)
         encrypted_path.unlink(missing_ok=True)
+        encrypted_nonce_path.unlink(missing_ok=True)
+        encrypted_meta_path.unlink(missing_ok=True)
+        pass
     except Exception:
         pass
 
@@ -559,7 +476,8 @@ def main(argv=None) -> int:
         return 2
 
     if input_path.is_dir():
-        image_paths = _iter_image_files(input_path)
+        print(f"Analyzing all images in folder: {input_path}")
+        image_paths = _iter_image_files(input_path / "plain")
         if not image_paths:
             print(f"Error: no supported images found in folder: {input_path}")
             return 2
@@ -575,6 +493,7 @@ def main(argv=None) -> int:
     start = time.perf_counter()
 
     for image_path in image_paths:
+        plus_one_bit_plain_path = add_one_bit_to_pixel(image_path)
         for alg in algorithms_to_run:
             try:
                 out_json = (
@@ -596,9 +515,21 @@ def main(argv=None) -> int:
             except Exception as exc:
                 print(f"Error running {alg} on {image_path}: {exc}")
 
+        plus_one_bit_plain_path.unlink(missing_ok=True)
     end = time.perf_counter()
 
     print(f"Execution time: {end - start:.3f} seconds")
+
+    print(input_path)
+    try:
+        (input_path / "encrypted").rmdir()
+        (input_path / "encrypted_plus_one_bit").rmdir()
+        (input_path / "plain_plus_one_bit").rmdir()
+        (input_path / "nonce_files").rmdir()
+        (input_path / "meta_files").rmdir()
+    except Exception:
+        pass
+
     return 0
 
 

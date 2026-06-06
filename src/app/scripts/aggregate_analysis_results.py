@@ -9,8 +9,6 @@ from typing import Any, Iterable
 ALGORITHM_PREFIXES = (
     "aes_ctr",
     "aes_cbc",
-    "aes_gcm",
-    "aes_ccm",
     "triple_des",
     "chacha20",
     "logistic_map",
@@ -133,15 +131,27 @@ def _iter_analysis_files(root_dir: Path) -> Iterable[Path]:
     return sorted(root_dir.rglob("*_analysis.json"))
 
 
+def _resolve_analysis_root(root_dir: Path) -> Path:
+    if root_dir.name == "dataset_analysis_results":
+        return root_dir
+
+    nested = root_dir / "dataset_analysis_results"
+    if nested.exists():
+        return nested
+
+    return root_dir
+
+
 def aggregate_analysis_files(root_dir: Path) -> list[Path]:
+    analysis_root = _resolve_analysis_root(root_dir)
     grouped_files: dict[tuple[Path, str], list[Path]] = {}
 
-    for json_file in _iter_analysis_files(root_dir):
+    for json_file in _iter_analysis_files(analysis_root):
         group_name = _extract_group_name(json_file)
         if group_name is None:
             continue
 
-        output_dir = json_file.parent.parent / "results_analysis"
+        output_dir = analysis_root.absolute().parent / "aggregated_analysis_results"
         output_dir.mkdir(parents=True, exist_ok=True)
         group_key = (output_dir, group_name)
         grouped_files.setdefault(group_key, []).append(json_file)
@@ -185,23 +195,32 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Aggregate *_analysis.json files into *_min.json, *_max.json, *_avg.json "
-            "for each algorithm and dataset prefix."
+            "and *_std.json for each algorithm and dataset prefix."
         )
     )
     parser.add_argument(
-        "--root",
+        "root",
+        nargs="?",
         type=Path,
-        default=_default_root_dir(),
-        help="Root folder to scan recursively (default: src/app/shared/images).",
+        default=None,
+        help=(
+            "Optional dataset folder to scan, such as src/app/shared/images/portrait. "
+            "If omitted, the default images root is used."
+        ),
+    )
+    parser.add_argument(
+        "--root",
+        dest="root_option",
+        type=Path,
+        default=None,
+        help="Explicit root folder to scan recursively.",
     )
     args = parser.parse_args()
 
-    root_dir = args.root.resolve()
+    root_dir = (args.root_option or args.root or _default_root_dir()).resolve()
     generated = aggregate_analysis_files(root_dir)
 
     print(f"Generated {len(generated)} files.")
-    # for path in generated:
-    # print(path.name)
 
 
 if __name__ == "__main__":

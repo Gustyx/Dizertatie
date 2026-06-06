@@ -103,8 +103,11 @@ def _render_correlation_plot(
     second = _load_image(second_image)
     first, second = align_rgb_images(first, second)
 
-    fig, axes = plt.subplots(2, 2, figsize=(12.5, 10.5), constrained_layout=True)
-    axes_flat = axes.ravel()
+    # Use a single row of 4 plots (R, G, B, Grayscale) like the histogram/bitplane generators
+    fig, axes = plt.subplots(
+        1, 4, figsize=(4.5 * 4, 4.5), constrained_layout=True
+    )
+    axes_flat = np.asarray(axes).ravel()
 
     channel_specs = [
         ("R", first[..., 0], second[..., 0]),
