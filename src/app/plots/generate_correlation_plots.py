@@ -24,7 +24,6 @@ CHANNEL_COLORS = {
     "R": "#d62728",
     "G": "#2ca02c",
     "B": "#1f77b4",
-    "grayscale": "#111111",
 }
 
 
@@ -103,9 +102,8 @@ def _render_correlation_plot(
     second = _load_image(second_image)
     first, second = align_rgb_images(first, second)
 
-    # Use a single row of 4 plots (R, G, B, Grayscale) like the histogram/bitplane generators
     fig, axes = plt.subplots(
-        1, 4, figsize=(4.5 * 4, 4.5), constrained_layout=True
+        1, 3, figsize=(12, 4), constrained_layout=True
     )
     axes_flat = np.asarray(axes).ravel()
 
@@ -114,10 +112,6 @@ def _render_correlation_plot(
         ("G", first[..., 1], second[..., 1]),
         ("B", first[..., 2], second[..., 2]),
     ]
-    gray_weights = np.array([0.299, 0.587, 0.114], dtype=np.float64)
-    first_gray = (first.astype(np.float64) * gray_weights).sum(axis=2)
-    second_gray = (second.astype(np.float64) * gray_weights).sum(axis=2)
-    channel_specs.append(("grayscale", first_gray, second_gray))
 
     for ax, (channel_name, first_values, second_values) in zip(
         axes_flat, channel_specs
@@ -126,16 +120,13 @@ def _render_correlation_plot(
             ax,
             first_values,
             second_values,
-            channel_name.upper() if channel_name != "grayscale" else "Grayscale",
+            channel_name.upper(),
             CHANNEL_COLORS[channel_name],
             max_points=max_points,
         )
         if channel_name in {"R", "G", "B"}:
             ax.set_xlabel("First image intensity")
             ax.set_ylabel("Second image intensity")
-        else:
-            ax.set_xlabel("First image luminance")
-            ax.set_ylabel("Second image luminance")
 
     fig.suptitle(f"{title}\n{first_image.stem} vs {second_image.stem}", fontsize=14)
     output_path.parent.mkdir(parents=True, exist_ok=True)

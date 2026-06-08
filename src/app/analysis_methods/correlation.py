@@ -30,7 +30,8 @@ def _pearson(x, y):
 def correlation_between_images(path_orig, path_enc):
     """Compute correlation metrics between two images.
 
-    Returns a dict with per-channel Pearson correlations and a grayscale correlation.
+    Returns a dict with per-channel Pearson correlations and an overall correlation
+    computed as the mean of the R, G and B values.
     Values near 0 indicate low linear correlation (desired for strong encryption).
     """
     a, b = align_rgb_images(_load_image(path_orig), _load_image(path_enc))
@@ -41,13 +42,9 @@ def correlation_between_images(path_orig, path_enc):
     for i, name in enumerate(channels):
         per_channel[name] = _pearson(a[..., i], b[..., i])
 
-    # grayscale (luminosity) correlation
-    lum = np.array([0.299, 0.587, 0.114], dtype=np.float64)
-    a_gray = (a.astype(np.float64) * lum).sum(axis=2)
-    b_gray = (b.astype(np.float64) * lum).sum(axis=2)
-    gray_corr = _pearson(a_gray, b_gray)
+    overall_corr = float(np.mean(list(per_channel.values())))
 
-    return {"per_channel": per_channel, "grayscale": gray_corr}
+    return {"per_channel": per_channel, "overall": overall_corr}
 
 
 def horizontal_pixel_correlation(path_img):
@@ -57,7 +54,7 @@ def horizontal_pixel_correlation(path_img):
     High values (close to 1) indicate structure; low values (close to 0)
     indicate randomness/encryption.
 
-    Returns dict with per-channel and grayscale correlations.
+    Returns dict with per-channel and overall correlations.
     """
     img = _load_image(path_img)
     if img.shape[1] < 2:
@@ -73,14 +70,9 @@ def horizontal_pixel_correlation(path_img):
         right = ch[:, 1:]  # all rows, all cols except first
         per_channel[name] = _pearson(left, right)
 
-    # grayscale
-    lum = np.array([0.299, 0.587, 0.114], dtype=np.float64)
-    gray = (img.astype(np.float64) * lum).sum(axis=2)
-    left = gray[:, :-1]
-    right = gray[:, 1:]
-    gray_corr = _pearson(left, right)
+    overall_corr = float(np.mean(list(per_channel.values())))
 
-    return {"per_channel": per_channel, "grayscale": gray_corr}
+    return {"per_channel": per_channel, "overall": overall_corr}
 
 
 def vertical_pixel_correlation(path_img):
@@ -90,7 +82,7 @@ def vertical_pixel_correlation(path_img):
     High values (close to 1) indicate structure; low values (close to 0)
     indicate randomness/encryption.
 
-    Returns dict with per-channel and grayscale correlations.
+    Returns dict with per-channel and overall correlations.
     """
     img = _load_image(path_img)
     if img.shape[0] < 2:
@@ -106,14 +98,9 @@ def vertical_pixel_correlation(path_img):
         bottom = ch[1:, :]  # all rows except first, all cols
         per_channel[name] = _pearson(top, bottom)
 
-    # grayscale
-    lum = np.array([0.299, 0.587, 0.114], dtype=np.float64)
-    gray = (img.astype(np.float64) * lum).sum(axis=2)
-    top = gray[:-1, :]
-    bottom = gray[1:, :]
-    gray_corr = _pearson(top, bottom)
+    overall_corr = float(np.mean(list(per_channel.values())))
 
-    return {"per_channel": per_channel, "grayscale": gray_corr}
+    return {"per_channel": per_channel, "overall": overall_corr}
 
 
 def diagonal_pixel_correlation(path_img):
@@ -123,7 +110,7 @@ def diagonal_pixel_correlation(path_img):
     High values (close to 1) indicate structure; low values (close to 0)
     indicate randomness/encryption.
 
-    Returns dict with per-channel and grayscale correlations.
+    Returns dict with per-channel and overall correlations.
     """
     img = _load_image(path_img)
     if img.shape[0] < 2 or img.shape[1] < 2:
@@ -138,14 +125,9 @@ def diagonal_pixel_correlation(path_img):
         bottom_right = ch[1:, 1:]
         per_channel[name] = _pearson(top_left, bottom_right)
 
-    # grayscale
-    lum = np.array([0.299, 0.587, 0.114], dtype=np.float64)
-    gray = (img.astype(np.float64) * lum).sum(axis=2)
-    top_left = gray[:-1, :-1]
-    bottom_right = gray[1:, 1:]
-    gray_corr = _pearson(top_left, bottom_right)
+    overall_corr = float(np.mean(list(per_channel.values())))
 
-    return {"per_channel": per_channel, "grayscale": gray_corr}
+    return {"per_channel": per_channel, "overall": overall_corr}
 
 
 def main(argv=None):
@@ -181,25 +163,25 @@ def main(argv=None):
             print("Correlation results (plain vs encrypted):")
             for ch, v in res["per_channel"].items():
                 print(f"  {ch}: {v:.6f}")
-            print(f"  grayscale: {res['grayscale']:.6f}")
+            print(f"  overall: {res['overall']:.6f}")
         elif args.cmd == "horizontal":
             res = horizontal_pixel_correlation(args.image)
             print("Horizontal pixel correlation:")
             for ch, v in res["per_channel"].items():
                 print(f"  {ch}: {v:.6f}")
-            print(f"  grayscale: {res['grayscale']:.6f}")
+            print(f"  overall: {res['overall']:.6f}")
         elif args.cmd == "vertical":
             res = vertical_pixel_correlation(args.image)
             print("Vertical pixel correlation:")
             for ch, v in res["per_channel"].items():
                 print(f"  {ch}: {v:.6f}")
-            print(f"  grayscale: {res['grayscale']:.6f}")
+            print(f"  overall: {res['overall']:.6f}")
         elif args.cmd == "diagonal":
             res = diagonal_pixel_correlation(args.image)
             print("Diagonal pixel correlation:")
             for ch, v in res["per_channel"].items():
                 print(f"  {ch}: {v:.6f}")
-            print(f"  grayscale: {res['grayscale']:.6f}")
+            print(f"  overall: {res['overall']:.6f}")
     except Exception as e:
         print("Error:", e)
         return 2

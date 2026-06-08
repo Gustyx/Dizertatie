@@ -37,7 +37,6 @@ def _normalize_histogram_result(result: dict) -> dict[str, dict[str, np.ndarray]
         "R": result["per_channel"]["R"]["histogram"],
         "G": result["per_channel"]["G"]["histogram"],
         "B": result["per_channel"]["B"]["histogram"],
-        "luminance": result["luminance"]["histogram"],
     }
     return normalized
 
@@ -52,7 +51,6 @@ def _render_histogram_pair(
     if "grayscale" in plain_result or "grayscale" in encrypted_result:
         channel_order = ["grayscale"]
 
-    # Keep only the overlay-style comparison and save it under the normal histogram name.
     fig, axes = plt.subplots(
         1,
         len(channel_order),

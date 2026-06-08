@@ -27,7 +27,6 @@ def _load_preview(path: Path) -> np.ndarray:
 
 
 def _bitplane_percentages(img: np.ndarray) -> dict[str, np.ndarray]:
-    # img: HxWx3 rgb uint8
     out = {}
     h, w = img.shape[0], img.shape[1]
     total = float(h * w)
@@ -51,7 +50,6 @@ def _render_bitplane_bar(plain_img: Path, enc_img: Path, output_path: Path) -> N
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4), constrained_layout=True)
     for ax, ch in zip(axes, ("R", "G", "B")):
-        # colored = plain, grey = encrypted (user preference)
         ax.bar(
             bits - 0.15,
             p_perc[ch],
@@ -65,7 +63,6 @@ def _render_bitplane_bar(plain_img: Path, enc_img: Path, output_path: Path) -> N
         ax.set_ylabel("% set bits")
         ax.set_title(ch)
         ax.grid(alpha=0.18)
-    # legend removed to avoid obscuring the bars (user requested)
 
     fig.suptitle(f"Bit-plane set-bit percentages\n{plain_img.stem} vs {enc_img.stem}")
     output_path.parent.mkdir(parents=True, exist_ok=True)

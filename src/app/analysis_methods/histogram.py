@@ -94,16 +94,40 @@ def _summarize_histogram(histogram: np.ndarray) -> dict:
     }
 
 
+def _overall_histogram_summary(per_channel: dict[str, dict]) -> dict:
+    numeric_keys = (
+        "peak_intensity",
+        "peak_count",
+        "peak_percentage",
+        "total_pixels",
+        "non_zero_bins",
+        "mean_intensity",
+        "chi2",
+        "chi2_p",
+        "chi2_dof",
+    )
+    summary: dict[str, object] = {}
+
+    for key in numeric_keys:
+        values = [channel_summary.get(key) for channel_summary in per_channel.values()]
+        numeric_values = [value for value in values if isinstance(value, (int, float))]
+        if not numeric_values:
+            continue
+        summary[key] = float(np.mean(numeric_values))
+
+    return summary
+
+
 def image_histogram(image):
     """Compute 256-bin histograms for image channels.
 
-    Returns a dict with per-channel RGB histograms for color images and a
-    grayscale histogram for monochrome images.
+    Returns a dict with per-channel RGB histograms for color images and an
+    overall histogram summary computed as the mean of the R, G and B summaries.
     """
     img = _load_image(image)
 
     if img.ndim == 2:
-        return {"grayscale": _summarize_histogram(_channel_histogram(img))}
+        return {"overall": _summarize_histogram(_channel_histogram(img))}
 
     if img.ndim != 3 or img.shape[2] < 3:
         raise ValueError("Image must be grayscale or RGB")
@@ -122,7 +146,7 @@ def image_histogram(image):
 
     return {
         "per_channel": per_channel,
-        "luminance": _summarize_histogram(_channel_histogram(luminance)),
+        "overall": _overall_histogram_summary(per_channel),
     }
 
 
@@ -134,9 +158,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     result = image_histogram(args.image)
-    if "grayscale" in result:
-        summary = result["grayscale"]
-        print("Grayscale histogram:")
+    if "overall" in result:
+        summary = result["overall"]
+        print("Overall histogram:")
         print(f"  peak intensity: {summary['peak_intensity']}")
         print(
             f"  peak count: {summary['peak_count']} ({summary['peak_percentage']:.2f}% of {summary['total_pixels']} pixels)"
@@ -163,19 +187,19 @@ def main(argv=None):
                 print(f"    chi2: {summary.get('chi2'):.3f} (p: N/A)")
             else:
                 print(f"    chi2: {summary.get('chi2'):.3e} (p: {chi_p:.3e})")
-        lum = result["luminance"]
-        print("  luminance:")
-        print(f"    peak intensity: {lum['peak_intensity']}")
+        overall = result["overall"]
+        print("  overall:")
+        print(f"    peak intensity: {overall['peak_intensity']}")
         print(
-            f"    peak count: {lum['peak_count']} ({lum['peak_percentage']:.2f}% of {lum['total_pixels']} pixels)"
+            f"    peak count: {overall['peak_count']} ({overall['peak_percentage']:.2f}% of {overall['total_pixels']} pixels)"
         )
-        print(f"    non-zero bins: {lum['non_zero_bins']}")
-        print(f"    mean intensity: {lum['mean_intensity']:.6f}")
-        chi_p = lum.get("chi2_p")
+        print(f"    non-zero bins: {overall['non_zero_bins']}")
+        print(f"    mean intensity: {overall['mean_intensity']:.6f}")
+        chi_p = overall.get("chi2_p")
         if chi_p is None:
-            print(f"    chi2: {lum.get('chi2'):.3f} (p: N/A)")
+            print(f"    chi2: {overall.get('chi2'):.3f} (p: N/A)")
         else:
-            print(f"    chi2: {lum.get('chi2'):.3e} (p: {chi_p:.3e})")
+            print(f"    chi2: {overall.get('chi2'):.3e} (p: {chi_p:.3e})")
 
 
 if __name__ == "__main__":
