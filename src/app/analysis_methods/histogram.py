@@ -95,25 +95,34 @@ def _summarize_histogram(histogram: np.ndarray) -> dict:
 
 
 def _overall_histogram_summary(per_channel: dict[str, dict]) -> dict:
-    numeric_keys = (
+    averaged_keys = (
         "peak_intensity",
-        "peak_count",
+        "peak_count", 
         "peak_percentage",
         "total_pixels",
         "non_zero_bins",
         "mean_intensity",
-        "chi2",
-        "chi2_p",
         "chi2_dof",
     )
     summary: dict[str, object] = {}
 
-    for key in numeric_keys:
-        values = [channel_summary.get(key) for channel_summary in per_channel.values()]
-        numeric_values = [value for value in values if isinstance(value, (int, float))]
-        if not numeric_values:
-            continue
-        summary[key] = float(np.mean(numeric_values))
+    for key in averaged_keys:
+        values = [ch.get(key) for ch in per_channel.values()]
+        numeric = [v for v in values if isinstance(v, (int, float))]
+        if numeric:
+            summary[key] = float(np.mean(numeric))
+
+    # chi2: sum (combined test statistic)
+    chi2_values = [ch.get("chi2") for ch in per_channel.values()]
+    chi2_numeric = [v for v in chi2_values if isinstance(v, (int, float))]
+    if chi2_numeric:
+        summary["chi2"] = float(np.sum(chi2_numeric))
+
+    # chi2_p: min (worst-case channel — conservative security criterion)
+    p_values = [ch.get("chi2_p") for ch in per_channel.values()]
+    p_numeric = [v for v in p_values if isinstance(v, (int, float))]
+    if p_numeric:
+        summary["chi2_p"] = float(np.min(p_numeric))
 
     return summary
 
@@ -137,12 +146,6 @@ def image_histogram(image):
         per_channel[channel_name] = _summarize_histogram(
             _channel_histogram(img[..., index])
         )
-
-    luminance = np.rint(
-        0.299 * img[..., 0].astype(np.float64)
-        + 0.587 * img[..., 1].astype(np.float64)
-        + 0.114 * img[..., 2].astype(np.float64)
-    ).astype(np.uint8)
 
     return {
         "per_channel": per_channel,

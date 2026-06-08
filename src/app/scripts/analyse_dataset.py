@@ -8,6 +8,7 @@ import time
 
 import numpy as np
 
+CLEAN_UP_ENABLED = False
 ROOT_SRC = Path(__file__).resolve().parents[2]
 if str(ROOT_SRC) not in sys.path:
     sys.path.insert(0, str(ROOT_SRC))
@@ -430,14 +431,14 @@ def run_analysis(
     output_json.parent.mkdir(parents=True, exist_ok=True)
     output_json.write_text(json.dumps(_jsonable(analysis), indent=2), encoding="utf-8")
 
-    try:
-        encrypted_plus_one_bit_path.unlink(missing_ok=True)
-        encrypted_path.unlink(missing_ok=True)
-        encrypted_nonce_path.unlink(missing_ok=True)
-        encrypted_meta_path.unlink(missing_ok=True)
-        pass
-    except Exception:
-        pass
+    if CLEAN_UP_ENABLED == True:
+        try:
+            encrypted_plus_one_bit_path.unlink(missing_ok=True)
+            encrypted_path.unlink(missing_ok=True)
+            encrypted_nonce_path.unlink(missing_ok=True)
+            encrypted_meta_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
     return analysis
 
@@ -515,20 +516,21 @@ def main(argv=None) -> int:
             except Exception as exc:
                 print(f"Error running {alg} on {image_path}: {exc}")
 
-        plus_one_bit_plain_path.unlink(missing_ok=True)
+        if CLEAN_UP_ENABLED == True:
+            plus_one_bit_plain_path.unlink(missing_ok=True)
     end = time.perf_counter()
 
     print(f"Execution time: {end - start:.3f} seconds")
 
-    print(input_path)
-    try:
-        (input_path / "encrypted").rmdir()
-        (input_path / "encrypted_plus_one_bit").rmdir()
-        (input_path / "plain_plus_one_bit").rmdir()
-        (input_path / "nonce_files").rmdir()
-        (input_path / "meta_files").rmdir()
-    except Exception:
-        pass
+    if CLEAN_UP_ENABLED == True:
+        try:
+            (input_path / "encrypted").rmdir()
+            (input_path / "encrypted_plus_one_bit").rmdir()
+            (input_path / "plain_plus_one_bit").rmdir()
+            (input_path / "nonce_files").rmdir()
+            (input_path / "meta_files").rmdir()
+        except Exception:
+            pass
 
     return 0
 
