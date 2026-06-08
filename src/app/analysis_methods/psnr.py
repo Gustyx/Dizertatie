@@ -1,20 +1,13 @@
 import argparse
 import numpy as np
-from pathlib import Path
 
 from ..utils import align_rgb_images, load_rgb_image
-
-
-def _load_image(image):
-    if isinstance(image, (str, Path)):
-        return load_rgb_image(Path(image))
-    return load_rgb_image(image)
 
 
 def _psnr_uint8(first, second):
     mse = _mse_uint8(first, second)
     if mse == 0.0:
-        return float("inf")
+        return 100.0
     return float(10.0 * np.log10((255.0**2) / mse))
 
 
@@ -29,8 +22,8 @@ def mean_squared_error(first_image, second_image):
     For RGB inputs, returns per-channel MSE and overall MSE.
     For grayscale inputs, returns grayscale MSE.
     """
-    img_a = _load_image(first_image)
-    img_b = _load_image(second_image)
+    img_a = load_rgb_image(first_image)
+    img_b = load_rgb_image(second_image)
 
     img_a, img_b = align_rgb_images(img_a, img_b)
 
@@ -59,8 +52,8 @@ def peak_signal_to_noise_ratio(first_image, second_image):
     For RGB inputs, returns per-channel PSNR and overall PSNR.
     For grayscale inputs, returns grayscale PSNR.
     """
-    img_a = _load_image(first_image)
-    img_b = _load_image(second_image)
+    img_a = load_rgb_image(first_image)
+    img_b = load_rgb_image(second_image)
 
     img_a, img_b = align_rgb_images(img_a, img_b)
 

@@ -1,37 +1,14 @@
 import argparse
 import numpy as np
-from pathlib import Path
 
 from ..utils import align_rgb_images, load_rgb_image
+from skimage.metrics import structural_similarity as ski_ssim
 
 
-def _load_image(image):
-    if isinstance(image, (str, Path)):
-        return load_rgb_image(Path(image))
-    return load_rgb_image(image)
-
-
-def _ssim_uint8(a, b, K1=0.01, K2=0.03, L=255.0):
-    # Compute a simple global SSIM (single-window) for uint8 images
-    a = a.astype(np.float64)
-    b = b.astype(np.float64)
-
-    mu_x = np.mean(a)
-    mu_y = np.mean(b)
-
-    sigma_x2 = np.mean((a - mu_x) ** 2)
-    sigma_y2 = np.mean((b - mu_y) ** 2)
-    sigma_xy = np.mean((a - mu_x) * (b - mu_y))
-
-    C1 = (K1 * L) ** 2
-    C2 = (K2 * L) ** 2
-
-    num = (2 * mu_x * mu_y + C1) * (2 * sigma_xy + C2)
-    den = (mu_x**2 + mu_y**2 + C1) * (sigma_x2 + sigma_y2 + C2)
-    if den == 0:
-        # If images are constant and identical, return 1.0
-        return 1.0 if np.allclose(a, b) else 0.0
-    return float(num / den)
+def _ssim_uint8(a, b):
+    a = np.asarray(a, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+    return float(ski_ssim(a, b, data_range=255.0))
 
 
 def structural_similarity(first_image, second_image):
@@ -42,8 +19,8 @@ def structural_similarity(first_image, second_image):
     - per_channel: dict for R/G/B when input is RGB
     - overall: overall SSIM computed on luminance
     """
-    img_a = _load_image(first_image)
-    img_b = _load_image(second_image)
+    img_a = load_rgb_image(first_image)
+    img_b = load_rgb_image(second_image)
 
     img_a, img_b = align_rgb_images(img_a, img_b)
 

@@ -1,14 +1,7 @@
 import argparse
 import numpy as np
-from pathlib import Path
 
 from ..utils import align_rgb_images, load_rgb_image
-
-
-def _load_image(image):
-    if isinstance(image, (str, Path)):
-        return load_rgb_image(Path(image))
-    return load_rgb_image(image)
 
 
 def number_of_pixel_change_rate(first_image, second_image):
@@ -18,8 +11,8 @@ def number_of_pixel_change_rate(first_image, second_image):
     For RGB images, each channel is compared independently and the result is
     reported per channel plus an overall grayscale-style rate.
     """
-    img_a = _load_image(first_image)
-    img_b = _load_image(second_image)
+    img_a = load_rgb_image(first_image)
+    img_b = load_rgb_image(second_image)
 
     img_a, img_b = align_rgb_images(img_a, img_b)
 

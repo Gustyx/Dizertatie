@@ -141,6 +141,18 @@ def _structured_histogram_summary(summary: dict) -> dict:
     }
 
 
+def _structured_histogram_overall(summary: dict) -> dict:
+    return {
+        "mean_intensity": round(float(summary["mean_intensity"]), 6),
+        "chi2": round(float(summary["chi2"]), 6),
+        "chi2_p": (
+            None
+            if summary.get("chi2_p") is None
+            else round(float(summary["chi2_p"]), 6)
+        ),
+    }
+
+
 def _structured_histogram_body(result: dict) -> dict:
     body: dict = {}
     if "per_channel" in result:
@@ -152,6 +164,8 @@ def _structured_histogram_body(result: dict) -> dict:
         body["grayscale"] = _structured_histogram_summary(result["grayscale"])
     if "luminance" in result:
         body["luminance"] = _structured_histogram_summary(result["luminance"])
+    if "overall" in result:
+        body["overall"] = _structured_histogram_overall(result["overall"])
     return body
 
 

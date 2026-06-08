@@ -1,17 +1,9 @@
-from pathlib import Path
 import numpy as np
 import argparse
 
-from ..utils import extract_preview_pixels, align_rgb_images, load_rgb_image
+from ..utils import align_rgb_images, load_rgb_image
 
 MAX_ANALYSIS_SIZE = (2048, 2048)
-
-
-def _load_image(path):
-    if isinstance(path, (str, Path)):
-        pixels, _ = extract_preview_pixels(Path(path), max_size=MAX_ANALYSIS_SIZE)
-        return load_rgb_image(pixels)
-    return load_rgb_image(path)
 
 
 def _pearson(x, y):
@@ -34,7 +26,7 @@ def correlation_between_images(path_orig, path_enc):
     computed as the mean of the R, G and B values.
     Values near 0 indicate low linear correlation (desired for strong encryption).
     """
-    a, b = align_rgb_images(_load_image(path_orig), _load_image(path_enc))
+    a, b = align_rgb_images(load_rgb_image(path_orig), load_rgb_image(path_enc))
 
     # per-channel
     channels = ("R", "G", "B")
@@ -42,7 +34,7 @@ def correlation_between_images(path_orig, path_enc):
     for i, name in enumerate(channels):
         per_channel[name] = _pearson(a[..., i], b[..., i])
 
-    overall_corr = float(np.mean(list(per_channel.values())))
+    overall_corr = float(np.max(np.abs(list(per_channel.values()))))
 
     return {"per_channel": per_channel, "overall": overall_corr}
 
@@ -56,7 +48,7 @@ def horizontal_pixel_correlation(path_img):
 
     Returns dict with per-channel and overall correlations.
     """
-    img = _load_image(path_img)
+    img = load_rgb_image(path_img)
     if img.shape[1] < 2:
         raise ValueError("Image width must be >= 2")
 
@@ -70,7 +62,7 @@ def horizontal_pixel_correlation(path_img):
         right = ch[:, 1:]  # all rows, all cols except first
         per_channel[name] = _pearson(left, right)
 
-    overall_corr = float(np.mean(list(per_channel.values())))
+    overall_corr = float(np.max(np.abs(list(per_channel.values()))))
 
     return {"per_channel": per_channel, "overall": overall_corr}
 
@@ -84,7 +76,7 @@ def vertical_pixel_correlation(path_img):
 
     Returns dict with per-channel and overall correlations.
     """
-    img = _load_image(path_img)
+    img = load_rgb_image(path_img)
     if img.shape[0] < 2:
         raise ValueError("Image height must be >= 2")
 
@@ -98,7 +90,7 @@ def vertical_pixel_correlation(path_img):
         bottom = ch[1:, :]  # all rows except first, all cols
         per_channel[name] = _pearson(top, bottom)
 
-    overall_corr = float(np.mean(list(per_channel.values())))
+    overall_corr = float(np.max(np.abs(list(per_channel.values()))))
 
     return {"per_channel": per_channel, "overall": overall_corr}
 
@@ -112,7 +104,7 @@ def diagonal_pixel_correlation(path_img):
 
     Returns dict with per-channel and overall correlations.
     """
-    img = _load_image(path_img)
+    img = load_rgb_image(path_img)
     if img.shape[0] < 2 or img.shape[1] < 2:
         raise ValueError("Image width and height must be >= 2")
 
@@ -125,7 +117,7 @@ def diagonal_pixel_correlation(path_img):
         bottom_right = ch[1:, 1:]
         per_channel[name] = _pearson(top_left, bottom_right)
 
-    overall_corr = float(np.mean(list(per_channel.values())))
+    overall_corr = float(np.max(np.abs(list(per_channel.values()))))
 
     return {"per_channel": per_channel, "overall": overall_corr}
 

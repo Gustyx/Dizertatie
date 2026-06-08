@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
 import argparse
 
 import numpy as np
 
 from PIL import Image
 
-from ..utils import extract_preview_pixels
+from ..utils import load_rgb_image
 
 MAX_ANALYSIS_SIZE = (2048, 2048)
 
@@ -24,24 +23,6 @@ def _downsample_array(img: np.ndarray) -> np.ndarray:
         return np.asarray(preview, dtype=np.uint8)
 
     return img
-
-
-def _load_image(image):
-    if isinstance(image, (str, Path)):
-        pixels, _ = extract_preview_pixels(Path(image), max_size=MAX_ANALYSIS_SIZE)
-        arr = np.asarray(pixels, dtype=np.uint8)
-        if arr.ndim == 2:
-            return np.repeat(arr[..., None], 3, axis=2)
-        if arr.ndim == 3 and arr.shape[2] >= 3:
-            return arr[..., :3]
-        raise ValueError("Image must be grayscale or RGB")
-
-    img = _downsample_array(np.asarray(image))
-    if img.ndim == 2:
-        return img.astype(np.uint8, copy=False)
-    if img.ndim == 3 and img.shape[2] >= 3:
-        return img[..., :3].astype(np.uint8, copy=False)
-    raise ValueError("Image must be grayscale or RGB")
 
 
 def _channel_histogram(values: np.ndarray) -> np.ndarray:
@@ -88,7 +69,6 @@ def _summarize_histogram(histogram: np.ndarray) -> dict:
         "total_pixels": total_pixels,
         "chi2": chi["chi2"],
         "chi2_p": chi["p"],
-        "chi2_dof": chi["dof"],
         "non_zero_bins": non_zero_bins,
         "mean_intensity": float(np.average(np.arange(256), weights=histogram)),
     }
@@ -96,13 +76,7 @@ def _summarize_histogram(histogram: np.ndarray) -> dict:
 
 def _overall_histogram_summary(per_channel: dict[str, dict]) -> dict:
     averaged_keys = (
-        "peak_intensity",
-        "peak_count", 
-        "peak_percentage",
-        "total_pixels",
-        "non_zero_bins",
         "mean_intensity",
-        "chi2_dof",
     )
     summary: dict[str, object] = {}
 
@@ -133,7 +107,7 @@ def image_histogram(image):
     Returns a dict with per-channel RGB histograms for color images and an
     overall histogram summary computed as the mean of the R, G and B summaries.
     """
-    img = _load_image(image)
+    img = load_rgb_image(image)
 
     if img.ndim == 2:
         return {"overall": _summarize_histogram(_channel_histogram(img))}

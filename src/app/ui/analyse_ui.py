@@ -3,9 +3,6 @@ import traceback
 import tkinter as tk
 from tkinter import messagebox
 
-from PIL import Image
-import numpy as np
-
 from ..analysis_methods import (
     correlation_between_images,
     diagonal_pixel_correlation,
@@ -219,10 +216,6 @@ def format_histogram_result(title: str, result: dict) -> str:
     if "overall" in result:
         summary = result["overall"]
         lines.append("Overall:")
-        lines.append(
-            f"  peak: {summary['peak_intensity']} ({summary['peak_count']} pixels, {summary['peak_percentage']:.2f}% of {summary['total_pixels']})"
-        )
-        lines.append(f"  non-zero bins: {summary['non_zero_bins']}")
         lines.append(f"  mean intensity: {summary['mean_intensity']:.6f}")
         chi_p = summary.get("chi2_p")
         if chi_p is None:

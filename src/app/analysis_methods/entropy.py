@@ -1,17 +1,9 @@
 import argparse
 import numpy as np
-from pathlib import Path
 
-from ..utils import extract_preview_pixels
+from ..utils import load_rgb_image
 
 MAX_ANALYSIS_SIZE = (2048, 2048)
-
-
-def _load_image(image):
-    if isinstance(image, (str, Path)):
-        pixels, _ = extract_preview_pixels(Path(image), max_size=MAX_ANALYSIS_SIZE)
-        return np.asarray(pixels, dtype=np.uint8)
-    return np.asarray(image)
 
 
 def _shannon_entropy_uint8(values):
@@ -33,7 +25,7 @@ def pixel_entropy(image):
     - grayscale image: {"grayscale": H}
     - RGB image: {"per_channel": {"R": Hr, "G": Hg, "B": Hb}, "overall": Ho}
     """
-    img = _load_image(image)
+    img = load_rgb_image(image)
 
     if img.ndim == 2:
         return {"grayscale": _shannon_entropy_uint8(img)}
@@ -68,62 +60,68 @@ def normalized_pixel_entropy(image):
 
 
 def block_entropy(image, block_size=8):
-    """Compute average Shannon entropy over non-overlapping blocks.
+    """Compute mean Shannon entropy over non-overlapping blocks.
 
     Useful for measuring local randomness instead of only whole-image randomness.
     """
     if block_size <= 0:
         raise ValueError("block_size must be > 0")
 
-    img = _load_image(image)
+    img = load_rgb_image(image)
 
     if img.ndim == 2:
-        h, w = img.shape
-        h_trim = (h // block_size) * block_size
-        w_trim = (w // block_size) * block_size
-        if h_trim == 0 or w_trim == 0:
-            raise ValueError("Image is smaller than the block size")
-
-        trimmed = img[:h_trim, :w_trim]
-        entropies = []
-        for y in range(0, h_trim, block_size):
-            for x in range(0, w_trim, block_size):
-                block = trimmed[y : y + block_size, x : x + block_size]
-                entropies.append(_shannon_entropy_uint8(block))
-
+        mean_entropy, n_blocks, used = _channel_block_entropy(img, block_size)
         return {
-            "grayscale": float(np.mean(entropies)),
-            "blocks": len(entropies),
-            "used_size": (h_trim, w_trim),
+            "grayscale": mean_entropy,
+            "blocks": n_blocks,
+            "used_size": used,
         }
 
     if img.ndim != 3 or img.shape[2] < 3:
         raise ValueError("Image must be grayscale or RGB")
 
     img = img[..., :3]
-    h, w, _ = img.shape
-    h_trim = (h // block_size) * block_size
-    w_trim = (w // block_size) * block_size
-    if h_trim == 0 or w_trim == 0:
-        raise ValueError("Image is smaller than the block size")
-
-    trimmed = img[:h_trim, :w_trim]
     per_channel = {}
     for channel_index, channel_name in enumerate(("R", "G", "B")):
-        entropies = []
-        channel = trimmed[..., channel_index]
-        for y in range(0, h_trim, block_size):
-            for x in range(0, w_trim, block_size):
-                block = channel[y : y + block_size, x : x + block_size]
-                entropies.append(_shannon_entropy_uint8(block))
-        per_channel[channel_name] = float(np.mean(entropies))
+        mean_entropy, n_blocks, used = _channel_block_entropy(
+            img[..., channel_index], block_size
+        )
+        per_channel[channel_name] = mean_entropy
 
     return {
         "per_channel": per_channel,
         "overall": float(np.mean(list(per_channel.values()))),
-        "blocks": int((h_trim // block_size) * (w_trim // block_size)),
-        "used_size": (h_trim, w_trim),
+        "blocks": n_blocks,
+        "used_size": used,
     }
+
+
+def _channel_block_entropy(channel, block_size):
+    """Return (mean_entropy, n_blocks, used_size) for a single 2-D channel."""
+    h, w = channel.shape
+    h_trim = (h // block_size) * block_size
+    w_trim = (w // block_size) * block_size
+
+    if h_trim == 0 or w_trim == 0:
+        raise ValueError("Image is smaller than the block size")
+
+    blocks = (
+        channel[:h_trim, :w_trim]
+        .reshape(h_trim // block_size, block_size,
+                 w_trim // block_size, block_size)
+        .transpose(0, 2, 1, 3)
+        .reshape(-1, block_size * block_size)
+    )
+
+    entropies = []
+    for block in blocks:
+        hist = np.bincount(block, minlength=256).astype(np.float64)
+        p = hist / block.size
+        p = p[p > 0]
+        entropies.append(-(p * np.log2(p)).sum())
+
+    n_blocks = len(entropies)
+    return float(np.mean(entropies)), n_blocks, (h_trim, w_trim)
 
 
 def pixel_entropy_with_blocks(image, block_sizes=(8, 16, 32)):

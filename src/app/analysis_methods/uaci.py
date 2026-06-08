@@ -1,14 +1,7 @@
 import argparse
 import numpy as np
-from pathlib import Path
 
 from ..utils import align_rgb_images, load_rgb_image
-
-
-def _load_image(image):
-    if isinstance(image, (str, Path)):
-        return load_rgb_image(Path(image))
-    return load_rgb_image(image)
 
 
 def unified_average_changing_intensity(first_image, second_image):
@@ -17,8 +10,8 @@ def unified_average_changing_intensity(first_image, second_image):
     UACI = (1/(M*N)) * sum |A(i,j)-B(i,j)| / 255 * 100%
     For RGB images, returns per-channel values and an overall mean across channels.
     """
-    img_a = _load_image(first_image)
-    img_b = _load_image(second_image)
+    img_a = load_rgb_image(first_image)
+    img_b = load_rgb_image(second_image)
 
     img_a, img_b = align_rgb_images(img_a, img_b)
 
