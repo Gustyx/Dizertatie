@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 from PIL import Image, ImageTk
 
 from ..plots.generate_bitplane_plots import _render_bitplane_bar
+from ..plots.generate_bitplane_comparison import _render_bitplane_comparison
 from ..plots.generate_correlation_plots import _render_correlation_plot
 from ..plots.generate_histogram_plots import _render_histogram_pair
 
@@ -207,24 +208,58 @@ def open_plots_window(
         max_size=(1100, 520),
     )
 
+    bitplane_grid_path = Path(temp_dir.name) / "bitplane_grid_plain_vs_encrypted.png"
+    _render_bitplane_comparison(
+        plain_path,
+        encrypted_image_path,
+        bitplane_grid_path,
+        plain_label="Original",
+        enc_label="Encrypted",
+    )
+    _add_image_panel(
+        bitplane_content,
+        "Bit-plane decomposition (plain vs encrypted)",
+        bitplane_grid_path,
+        plot_images,
+        max_size=(1100, 300),
+    )
+
     bitplane_path = Path(temp_dir.name) / "bitplane_plain_vs_encrypted.png"
     _render_bitplane_bar(plain_path, encrypted_image_path, bitplane_path)
     _add_image_panel(
         bitplane_content,
-        "Bitplane comparison",
+        "Bit-plane set-bit percentages",
         bitplane_path,
         plot_images,
         max_size=(1100, 520),
     )
 
     if plus_one_bit_path.exists():
+        bitplane_plus_grid_path = (
+            Path(temp_dir.name) / "bitplane_grid_encrypted_vs_plus_one.png"
+        )
+        _render_bitplane_comparison(
+            encrypted_image_path,
+            plus_one_bit_path,
+            bitplane_plus_grid_path,
+            plain_label="Encrypted",
+            enc_label="Encrypted + 1 bit",
+        )
+        _add_image_panel(
+            bitplane_content,
+            "Bit-plane decomposition (encrypted vs encrypted + one bit)",
+            bitplane_plus_grid_path,
+            plot_images,
+            max_size=(1100, 300),
+        )
+
         bitplane_plus_path = Path(temp_dir.name) / "bitplane_encrypted_vs_plus_one.png"
         _render_bitplane_bar(
             encrypted_image_path, plus_one_bit_path, bitplane_plus_path
         )
         _add_image_panel(
             bitplane_content,
-            "Encrypted vs encrypted + one bit",
+            "Set-bit percentages (encrypted vs encrypted + one bit)",
             bitplane_plus_path,
             plot_images,
             max_size=(1100, 520),

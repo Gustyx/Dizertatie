@@ -327,8 +327,8 @@ def bit_planes(img_channel):
 
 plain_portrait = _plain('portrait', 'portrait_1')
 enc_portrait_ctr_bp = _enc('portrait', 'aes_ctr', 'portrait_1')
-plain_bp_ch         = plain_portrait[..., 0]
-enc_bp_ctr_ch       = enc_portrait_ctr_bp[..., 0]
+plain_bp_ch         = np.dot(plain_portrait[..., :3], [0.2989, 0.5870, 0.1140]).astype(np.uint8)
+enc_bp_ctr_ch       = np.dot(enc_portrait_ctr_bp[..., :3], [0.2989, 0.5870, 0.1140]).astype(np.uint8)
 
 fig8, axes8 = plt.subplots(2, 8, figsize=(16, 4))
 for row, (ch, row_label) in enumerate([(plain_bp_ch,   'Original'),
@@ -354,8 +354,8 @@ plt.close()
 # =============================================================================
 
 enc_portrait_henon_bp = _enc('portrait', 'henon_map', 'portrait_1')
-plain_arch_ch         = plain_portrait[..., 0]
-enc_arch_henon_ch     = enc_portrait_henon_bp[..., 0]
+plain_arch_ch         = np.dot(plain_portrait[..., :3], [0.2989, 0.5870, 0.1140]).astype(np.uint8)
+enc_arch_henon_ch     = np.dot(enc_portrait_henon_bp[..., :3], [0.2989, 0.5870, 0.1140]).astype(np.uint8)
 
 fig9, axes9 = plt.subplots(2, 8, figsize=(16, 4))
 for row, (ch, row_label) in enumerate([(plain_arch_ch,        'Original'),

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from pathlib import Path
 import traceback
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 
 import numpy as np
 
@@ -10,11 +12,9 @@ from ..utils import (
     build_image_box,
     choose_image,
     display_image,
-    set_result_text,
     encrypt_image,
     decrypt_image,
     add_one_bit_to_pixel,
-    extract_pixels,
 )
 from ..analysis_methods import (
     correlation_between_images,
@@ -45,519 +45,451 @@ except Exception:
 
 
 KEY_PHRASE = "encryptionkey"
-ALGORITHM_DEFAULT = "AES_CTR"
+ALL_ALGORITHMS = [
+    "AES_CTR", "AES_CBC", "Triple_DES", "ChaCha20",
+    "Logistic_Map", "Henon_Map", "Custom_AES",
+]
 
 ui_state = ImageUiState()
-ALGORITHM_SELECTION: tk.StringVar | None = None
-ALGORITHM_BUTTONS: dict[str, tk.Button] = {}
-RESULT_CATEGORY_DEFAULT = "All"
-RESULT_CATEGORY_SELECTION: tk.StringVar | None = None
-RESULT_CATEGORY_BUTTONS: dict[str, tk.Button] = {}
-LAST_ANALYSIS_SECTIONS: list[tuple[str, str, str]] = []
 
+# Multi-select algorithm state
+SELECTED_ALGORITHMS: set[str] = {"AES_CTR"}
+ALGORITHM_BUTTONS: dict[str, tk.Button] = {}
+
+# Results state
+LAST_ENCRYPTED_PATHS: dict[str, Path] = {}          # alg -> encrypted path
+LAST_ANALYSIS_DATA: dict[str, list[tuple[str, str, str]]] = {}  # alg -> sections
+
+_result_notebook: ttk.Notebook | None = None
+_result_notebook_frame: tk.Frame | None = None
+_img_box: tk.Canvas | None = None
 
 base_dir = Path(__file__).resolve().parent.parent / "shared"
 
 
-def _set_category_button_state(active_name: str) -> None:
-    for name, button in RESULT_CATEGORY_BUTTONS.items():
-        if name == active_name:
-            button.config(relief="sunken", bg="#cfe")
-        else:
-            button.config(relief="raised", bg=button.master.cget("bg"))
+# ── Algorithm selection ───────────────────────────────────────────────────────
 
-
-def _render_result_sections() -> None:
-    if RESULT_CATEGORY_SELECTION is None:
-        return
-
-    category = RESULT_CATEGORY_SELECTION.get()
-    if not LAST_ANALYSIS_SECTIONS:
-        set_result_text(ui_state, "")
-        return
-
-    if category == "All":
-        visible_sections = LAST_ANALYSIS_SECTIONS
+def _toggle_algorithm(name: str) -> None:
+    if name in SELECTED_ALGORITHMS:
+        if len(SELECTED_ALGORITHMS) == 1:
+            return  # always keep at least one selected
+        SELECTED_ALGORITHMS.discard(name)
     else:
-        visible_sections = [
-            section for section in LAST_ANALYSIS_SECTIONS if section[0] == category
-        ]
-
-    if not visible_sections:
-        set_result_text(ui_state, f"No results available for {category}.")
-        return
-
-    set_result_text(
-        ui_state,
-        format_complete_analysis_result(
-            [(title, body) for _, title, body in visible_sections]
-        ),
-    )
+        SELECTED_ALGORITHMS.add(name)
+    _refresh_algorithm_buttons()
 
 
-def _set_result_category(category_name: str) -> None:
-    if RESULT_CATEGORY_SELECTION is None:
-        return
+def _refresh_algorithm_buttons() -> None:
+    for name, btn in ALGORITHM_BUTTONS.items():
+        if name in SELECTED_ALGORITHMS:
+            btn.config(relief="sunken", bg="#cfe")
+        else:
+            try:
+                btn.config(relief="raised", bg=btn.master.cget("bg"))
+            except Exception:
+                btn.config(relief="raised")
 
-    RESULT_CATEGORY_SELECTION.set(category_name)
-    _set_category_button_state(category_name)
-    _render_result_sections()
 
+def build_algorithm_menu(parent: tk.Widget) -> None:
+    global ALGORITHM_BUTTONS
+    ALGORITHM_BUTTONS = {}
+
+    tk.Label(parent, text="Algorithms", font=(None, 10, "bold")).pack(pady=(0, 2))
+
+    for name in ALL_ALGORITHMS:
+        btn = tk.Button(
+            parent,
+            text=name.replace("_", " "),
+            width=12,
+            command=lambda n=name: _toggle_algorithm(n),
+        )
+        btn.pack(pady=4, fill="x")
+        ALGORITHM_BUTTONS[name] = btn
+
+    _refresh_algorithm_buttons()
+
+
+# ── Analysis helpers ──────────────────────────────────────────────────────────
 
 def _make_section(category: str, title: str, body: str) -> tuple[str, str, str]:
     return (category, title, body)
 
 
-def _format_result_body(title: str, result: dict, percent: bool = False) -> str:
+def _fmt(title: str, result: dict, percent: bool = False) -> str:
     return format_result(title, result, percent=percent).replace(f"{title}\n", "", 1)
 
 
-def on_encrypt(canvas: tk.Canvas) -> Path | None:
-    if encrypt_image is None:
-        messagebox.showerror("Error", "encrypt_image function not available")
-        return None
-    if ui_state.selected_image_path is None:
-        messagebox.showwarning("No image", "Please choose or drop an image first.")
-        return None
+def _run_analysis(encrypted_path: Path) -> list[tuple[str, str, str]]:
+    encrypted_plus_one_bit_path = (
+        encrypted_path.parent.parent / "encrypted_plus_one_bit" / encrypted_path.name
+    )
+    plain_path = (
+        encrypted_path.parent.parent
+        / "plain"
+        / encrypted_path.name.split("_enc_", 1)[-1]
+    )
 
-    try:
-        input_path = ui_state.selected_image_path
+    e = str(encrypted_path)
+    eb = str(encrypted_plus_one_bit_path)
+    p = str(plain_path)
 
-        try:
-            alg = ALGORITHM_SELECTION.get()
-        except Exception:
-            alg = ALGORITHM_DEFAULT
+    return [
+        _make_section("Encrypted", "Horizontal correlation",
+            _fmt("Horizontal correlation", horizontal_pixel_correlation(e))),
+        _make_section("Encrypted", "Vertical correlation",
+            _fmt("Vertical correlation", vertical_pixel_correlation(e))),
+        _make_section("Encrypted", "Diagonal correlation",
+            _fmt("Diagonal correlation", diagonal_pixel_correlation(e))),
+        _make_section("Encrypted", "Entropy results",
+            format_entropy_result("Entropy results", pixel_entropy_with_blocks(e))
+            .replace("Entropy results\n", "", 1)),
+        _make_section("Encrypted", "Histogram results",
+            format_histogram_result("Histogram results", image_histogram(e))
+            .replace("Histogram results\n", "", 1)),
+        _make_section("Encrypted vs Encrypted", "Encrypted vs Encrypted correlation",
+            _fmt("Encrypted vs Encrypted correlation", correlation_between_images(e, eb))),
+        _make_section("Encrypted vs Encrypted", "NPCR results",
+            _fmt("NPCR results", number_of_pixel_change_rate(e, eb), percent=True)),
+        _make_section("Encrypted vs Encrypted", "UACI results",
+            _fmt("UACI results", unified_average_changing_intensity(e, eb), percent=True)),
+        _make_section("Encrypted vs Plain", "Encrypted vs Plain correlation",
+            _fmt("Encrypted vs Plain correlation", correlation_between_images(e, p))),
+        _make_section("Encrypted vs Plain", "MSE results",
+            _fmt("MSE results", mean_squared_error(e, p))),
+        _make_section("Encrypted vs Plain", "PSNR results",
+            _fmt("PSNR results", peak_signal_to_noise_ratio(e, p))),
+        _make_section("Encrypted vs Plain", "SSIM results",
+            _fmt("SSIM results", structural_similarity(e, p))),
+    ]
 
-        encrypted_dir = input_path.parent.parent / "encrypted"
-        encrypted_dir.mkdir(parents=True, exist_ok=True)
-        prefix = alg.lower()
-        output_path = encrypted_dir / f"{prefix}_enc_{input_path.name}"
 
-        encrypt_image(input_path, output_path, KEY_PHRASE, algorithm=alg)
+# ── Result notebook ───────────────────────────────────────────────────────────
 
-        input_path_2 = add_one_bit_to_pixel(input_path)
-        encrypted_plus_one_bit_dir = input_path.parent.parent / "encrypted_plus_one_bit"
-        encrypted_plus_one_bit_dir.mkdir(parents=True, exist_ok=True)
-        output_path_2 = encrypted_plus_one_bit_dir / f"{prefix}_enc_{input_path.name}"
+def _build_result_tab(
+    notebook: ttk.Notebook,
+    alg: str,
+    sections: list[tuple[str, str, str]],
+) -> None:
+    tab = ttk.Frame(notebook)
+    notebook.add(tab, text=alg.replace("_", "-"))
 
-        encrypt_image(input_path_2, output_path_2, KEY_PHRASE, algorithm=alg)
-        # replace displayed image with encrypted output
-        try:
-            display_image(output_path, canvas, ui_state, extra_window_height=320)
-        except Exception:
-            pass
-        return output_path
-    except Exception as exc:
-        messagebox.showerror(
-            "Error", f"Encryption failed:\n{exc}\n\n{traceback.format_exc()}"
+    # Category filter row
+    btn_row = tk.Frame(tab)
+    btn_row.pack(fill="x", padx=4, pady=(4, 2))
+
+    cat_buttons: dict[str, tk.Button] = {}
+
+    # Text area
+    text_frame = tk.Frame(tab)
+    text_frame.pack(fill="both", expand=True)
+    scrollbar = ttk.Scrollbar(text_frame, orient="vertical")
+    scrollbar.pack(side="right", fill="y")
+    result_text = tk.Text(
+        text_frame,
+        wrap="word",
+        padx=8,
+        pady=8,
+        relief="flat",
+        borderwidth=0,
+        yscrollcommand=scrollbar.set,
+    )
+    result_text.pack(side="left", fill="both", expand=True)
+    scrollbar.config(command=result_text.yview)
+
+    def _render(cat: str) -> None:
+        for name, btn in cat_buttons.items():
+            try:
+                default_bg = btn.master.cget("bg")
+            except Exception:
+                default_bg = "SystemButtonFace"
+            btn.config(relief="sunken" if name == cat else "raised",
+                       bg="#cfe" if name == cat else default_bg)
+
+        visible = sections if cat == "All" else [s for s in sections if s[0] == cat]
+        text = (
+            format_complete_analysis_result([(t, b) for _, t, b in visible])
+            if visible else f"No results for '{cat}'."
         )
-        return None
+        result_text.config(state="normal")
+        result_text.delete("1.0", "end")
+        result_text.insert("1.0", text)
+        result_text.config(state="disabled")
+
+    for cat in ("All", "Encrypted", "Encrypted vs Plain", "Encrypted vs Encrypted"):
+        btn = tk.Button(btn_row, text=cat, padx=6, command=lambda c=cat: _render(c))
+        btn.pack(side="left", padx=2)
+        cat_buttons[cat] = btn
+
+    _render("All")
 
 
-def on_complete_analysis() -> None:
-    if ui_state.selected_image_path is None:
-        messagebox.showwarning(
-            "No image", "Please choose or drop an encrypted image first."
-        )
+def _rebuild_result_notebook() -> None:
+    global _result_notebook
+    if _result_notebook_frame is None:
         return
 
+    # Remove placeholder and any previous notebook
+    for widget in _result_notebook_frame.winfo_children():
+        widget.destroy()
+    _result_notebook = None
+
+    if not LAST_ANALYSIS_DATA:
+        return
+
+    nb = ttk.Notebook(_result_notebook_frame)
+    nb.pack(fill="both", expand=True)
+    _result_notebook = nb
+
+    for alg, sections in LAST_ANALYSIS_DATA.items():
+        _build_result_tab(nb, alg, sections)
+
+    def _on_tab_changed(_event=None) -> None:
+        if _img_box is None:
+            return
+        try:
+            tab_text = nb.tab(nb.index("current"), "text")
+            alg = tab_text.replace("-", "_")
+            path = LAST_ENCRYPTED_PATHS.get(alg)
+            if path and path.exists():
+                display_image(path, _img_box, ui_state, extra_window_height=320)
+        except Exception:
+            pass
+
+    nb.bind("<<NotebookTabChanged>>", _on_tab_changed)
+
+    # Ensure the result frame is visible
     try:
-        encrypted_path = ui_state.selected_image_path
-        encrypted_plus_one_bit_path = (
-            encrypted_path.parent.parent
-            / "encrypted_plus_one_bit"
-            / f"{encrypted_path.name}"
-        )
-        plain_path = (
-            encrypted_path.parent.parent
-            / "plain"
-            / f"{encrypted_path.name.split('_enc_')[-1]}"
-        )
+        _result_notebook_frame.master.pack(fill="both", expand=True)
+    except Exception:
+        pass
 
-        e_str = str(encrypted_path)
-        eb_str = str(encrypted_plus_one_bit_path)
-        p_str = str(plain_path)
 
-        arr, _ = extract_pixels(encrypted_path)
-        arr = np.asarray(arr, dtype=np.uint8)
+# ── Actions ───────────────────────────────────────────────────────────────────
 
-        sections = [
-            _make_section(
-                "Encrypted",
-                "Horizontal correlation",
-                _format_result_body(
-                    "Horizontal correlation",
-                    horizontal_pixel_correlation(e_str),
-                ),
-            ),
-            _make_section(
-                "Encrypted",
-                "Vertical correlation",
-                _format_result_body(
-                    "Vertical correlation",
-                    vertical_pixel_correlation(e_str),
-                ),
-            ),
-            _make_section(
-                "Encrypted",
-                "Diagonal correlation",
-                _format_result_body(
-                    "Diagonal correlation",
-                    diagonal_pixel_correlation(e_str),
-                ),
-            ),
-            _make_section(
-                "Encrypted",
-                "Entropy results",
-                format_entropy_result(
-                    "Entropy results", pixel_entropy_with_blocks(arr)
-                ).replace("Entropy results\n", "", 1),
-            ),
-            _make_section(
-                "Encrypted",
-                "Histogram results",
-                format_histogram_result(
-                    "Histogram results", image_histogram(e_str)
-                ).replace("Histogram results\n", "", 1),
-            ),
-            _make_section(
-                "Encrypted vs Encrypted",
-                "Encrypted vs Encrypted correlation",
-                _format_result_body(
-                    "Encrypted vs Encrypted correlation",
-                    correlation_between_images(e_str, eb_str),
-                ),
-            ),
-            _make_section(
-                "Encrypted vs Encrypted",
-                "NPCR results",
-                _format_result_body(
-                    "NPCR results",
-                    number_of_pixel_change_rate(e_str, eb_str),
-                    percent=True,
-                ),
-            ),
-            _make_section(
-                "Encrypted vs Encrypted",
-                "UACI results",
-                _format_result_body(
-                    "UACI results",
-                    unified_average_changing_intensity(e_str, eb_str),
-                    percent=True,
-                ),
-            ),
-            _make_section(
-                "Encrypted vs Plain",
-                "Encrypted vs Plain correlation",
-                _format_result_body(
-                    "Encrypted vs Plain correlation",
-                    correlation_between_images(e_str, p_str),
-                ),
-            ),
-            _make_section(
-                "Encrypted vs Plain",
-                "MSE results",
-                _format_result_body(
-                    "MSE results",
-                    mean_squared_error(e_str, p_str),
-                ),
-            ),
-            _make_section(
-                "Encrypted vs Plain",
-                "PSNR results",
-                _format_result_body(
-                    "PSNR results",
-                    peak_signal_to_noise_ratio(e_str, p_str),
-                ),
-            ),
-            _make_section(
-                "Encrypted vs Plain",
-                "SSIM results",
-                _format_result_body(
-                    "SSIM results",
-                    structural_similarity(e_str, p_str),
-                ),
-            ),
-        ]
+def on_encrypt(canvas: tk.Canvas) -> dict[str, Path]:
+    if ui_state.selected_image_path is None:
+        messagebox.showwarning("No image", "Please choose or drop an image first.")
+        return {}
+    if not SELECTED_ALGORITHMS:
+        messagebox.showwarning("No algorithm", "Please select at least one algorithm.")
+        return {}
 
-        LAST_ANALYSIS_SECTIONS[:] = sections
-        _set_result_category(
-            RESULT_CATEGORY_SELECTION.get() if RESULT_CATEGORY_SELECTION else "All"
-        )
-    except Exception as exc:
-        messagebox.showerror(
-            "Error", f"Analysis failed:\n{exc}\n\n{traceback.format_exc()}"
-        )
+    input_path = ui_state.selected_image_path
+    input_path_2 = add_one_bit_to_pixel(input_path)
+
+    results: dict[str, Path] = {}
+    errors: list[str] = []
+
+    for alg in sorted(SELECTED_ALGORITHMS):
+        try:
+            encrypted_dir = input_path.parent.parent / "encrypted"
+            encrypted_dir.mkdir(parents=True, exist_ok=True)
+            prefix = alg.lower()
+            output_path = encrypted_dir / f"{prefix}_enc_{input_path.name}"
+            encrypt_image(input_path, output_path, KEY_PHRASE, algorithm=alg)
+
+            plus_one_dir = input_path.parent.parent / "encrypted_plus_one_bit"
+            plus_one_dir.mkdir(parents=True, exist_ok=True)
+            encrypt_image(input_path_2, plus_one_dir / f"{prefix}_enc_{input_path.name}",
+                          KEY_PHRASE, algorithm=alg)
+
+            results[alg] = output_path
+        except Exception as exc:
+            errors.append(f"{alg}: {exc}")
+
+    if errors:
+        messagebox.showerror("Encryption errors", "\n".join(errors))
+
+    if results:
+        first_path = next(iter(results.values()))
+        try:
+            display_image(first_path, canvas, ui_state, extra_window_height=320)
+        except Exception:
+            pass
+
+    LAST_ENCRYPTED_PATHS.clear()
+    LAST_ENCRYPTED_PATHS.update(results)
+    return results
+
+
+def on_complete_analysis(paths: dict[str, Path] | None = None) -> None:
+    paths = paths or LAST_ENCRYPTED_PATHS
+    if not paths:
+        messagebox.showwarning("No image", "Please encrypt an image first.")
+        return
+
+    LAST_ANALYSIS_DATA.clear()
+    errors: list[str] = []
+
+    for alg, enc_path in paths.items():
+        try:
+            LAST_ANALYSIS_DATA[alg] = _run_analysis(enc_path)
+        except Exception as exc:
+            errors.append(f"{alg}:\n{exc}\n{traceback.format_exc()}")
+
+    if errors:
+        messagebox.showerror("Analysis errors", "\n\n".join(errors))
+
+    _rebuild_result_notebook()
 
 
 def on_encrypt_and_analysis(canvas: tk.Canvas) -> None:
-    output_path = on_encrypt(canvas)
-    if output_path is None:
-        return
-    on_complete_analysis()
+    paths = on_encrypt(canvas)
+    if paths:
+        on_complete_analysis(paths)
 
 
 def on_decrypt(canvas: tk.Canvas) -> None:
-    if decrypt_image is None:
-        messagebox.showerror("Error", "decrypt_image function not available")
-        return
     if ui_state.selected_image_path is None:
         messagebox.showwarning("No image", "Please choose or drop an image first.")
         return
 
+    input_path = ui_state.selected_image_path
+    stem = input_path.stem.lower()
+
+    prefix_map = {
+        "aes_cbc_": "AES_CBC", "aes-cbc_": "AES_CBC",
+        "chacha20_": "ChaCha20", "chacha_": "ChaCha20",
+        "aes_ctr_": "AES_CTR", "aes-ctr_": "AES_CTR",
+        "triple_des_": "Triple_DES", "des_": "Triple_DES",
+        "logistic_map_": "Logistic_Map", "logistic-map_": "Logistic_Map",
+        "henon_map_": "Henon_Map", "henon-map_": "Henon_Map",
+        "custom_aes_": "Custom_AES", "custom-aes_": "Custom_AES",
+    }
+    detected_alg = next(
+        (v for k, v in prefix_map.items() if stem.startswith(k)),
+        next(iter(SELECTED_ALGORITHMS), "AES_CTR"),
+    )
+
+    output_name = input_path.name
+    if "_enc_" in output_name:
+        alg_prefix, _, image_name = output_name.partition("_enc_")
+        output_name = f"{alg_prefix}_dec_{image_name}"
+    else:
+        output_name = f"dec_{output_name}"
+
     try:
-        input_path = ui_state.selected_image_path
-        # Decide algorithm from filename prefix if possible
-        stem = input_path.stem
-        if stem.lower().startswith("aes-cbc_") or stem.lower().startswith("aes_cbc_"):
-            detected_alg = "AES_CBC"
-            print("Detected AES-CBC from filename prefix")
-        elif stem.lower().startswith("chacha20_") or stem.lower().startswith("chacha_"):
-            detected_alg = "CHACHA20"
-            print("Detected ChaCha20 from filename prefix")
-        elif stem.lower().startswith("aes-ctr_") or stem.lower().startswith("aes_ctr_"):
-            detected_alg = "AES_CTR"
-        elif stem.lower().startswith("des_"):
-            detected_alg = "DES"
-        elif stem.lower().startswith("custom-aes_") or stem.lower().startswith(
-            "custom_aes_"
-        ):
-            detected_alg = "CUSTOM_AES"
-        elif stem.lower().startswith("logistic-map_") or stem.lower().startswith(
-            "logistic_map_"
-        ):
-            detected_alg = "LOGISTIC_MAP"
-        elif stem.lower().startswith("henon-map_") or stem.lower().startswith(
-            "henon_map_"
-        ):
-            detected_alg = "HENON_MAP"
-        else:
-            try:
-                detected_alg = ALGORITHM_SELECTION.get()
-            except Exception:
-                detected_alg = ALGORITHM_DEFAULT
-
-        output_name = input_path.name
-        if "_enc_" in output_name:
-            alg_prefix, _, image_name = output_name.partition("_enc_")
-            output_name = f"{alg_prefix}_dec_{image_name}"
-        else:
-            output_name = f"dec_{output_name}"
-
         decrypted_dir = input_path.parent.parent / "decrypted"
         decrypted_dir.mkdir(parents=True, exist_ok=True)
         output_path = decrypted_dir / output_name
-
         decrypt_image(input_path, output_path, KEY_PHRASE, algorithm=detected_alg)
-        # replace displayed image with decrypted output
         try:
             display_image(output_path, canvas, ui_state, extra_window_height=320)
         except Exception:
             pass
     except Exception as exc:
-        messagebox.showerror(
-            "Error", f"Decryption failed:\n{exc}\n\n{traceback.format_exc()}"
-        )
+        messagebox.showerror("Error", f"Decryption failed:\n{exc}\n\n{traceback.format_exc()}")
 
 
-def build_buttons(frame, img_box) -> None:
-    choose_btn = tk.Button(
-        frame,
-        text="Choose image",
-        command=lambda: choose_image(
-            img_box,
-            ui_state,
-            title="Select image",
-            initialdir=str(base_dir / "images"),
-            extra_window_height=320,
-        ),
+def _on_view_plots(root: tk.Misc) -> None:
+    """Open plots for the active notebook tab's algorithm, or fallback to selected image."""
+    alg: str | None = None
+    if _result_notebook is not None and LAST_ENCRYPTED_PATHS:
+        try:
+            tab_text = _result_notebook.tab(_result_notebook.index("current"), "text")
+            alg = tab_text.replace("-", "_")
+        except Exception:
+            pass
+
+    path = (
+        LAST_ENCRYPTED_PATHS.get(alg)
+        if alg and alg in LAST_ENCRYPTED_PATHS
+        else (next(iter(LAST_ENCRYPTED_PATHS.values()), None) or ui_state.selected_image_path)
     )
-    choose_btn.pack()
-
-    ui_state.action_buttons_frame = tk.Frame(frame)
-
-    encrypt_btn = tk.Button(
-        ui_state.action_buttons_frame,
-        text="Encrypt",
-        width=12,
-        command=lambda: on_encrypt(img_box),
-    )
-    encrypt_analysis_btn = tk.Button(
-        ui_state.action_buttons_frame,
-        text="Encrypt + Analysis",
-        width=18,
-        command=lambda: on_encrypt_and_analysis(img_box),
-    )
-    decrypt_btn = tk.Button(
-        ui_state.action_buttons_frame,
-        text="Decrypt",
-        width=12,
-        command=lambda: on_decrypt(img_box),
-    )
-    plots_btn = tk.Button(
-        ui_state.action_buttons_frame,
-        text="View plots",
-        width=12,
-        command=lambda: open_plots_window(
-            ui_state.selected_image_path,
-            parent=frame.winfo_toplevel(),
-        ),
-    )
-    encrypt_btn.pack(side="left", padx=6)
-    encrypt_analysis_btn.pack(side="left", padx=6)
-    decrypt_btn.pack(side="left", padx=6)
-    plots_btn.pack(side="left", padx=6)
+    open_plots_window(path, parent=root)
 
 
-def build_algorithm_menu(parent) -> None:
-    """Build vertical algorithm buttons in the left sidebar."""
-    global ALGORITHM_SELECTION, ALGORITHM_BUTTONS
-    ALGORITHM_SELECTION = tk.StringVar(value=ALGORITHM_DEFAULT)
-
-    tk.Label(parent, text="Algorithms", font=(None, 10, "bold")).pack(pady=(0, 6))
-
-    def make_btn(display_name: str) -> None:
-        btn = tk.Button(parent, text=display_name, width=12)
-
-        def on_click():
-            set_algorithm(display_name)
-
-        btn.config(command=on_click)
-        btn.pack(pady=4, fill="x")
-        ALGORITHM_BUTTONS[display_name] = btn
-
-    make_btn("AES_CTR")
-    make_btn("AES_CBC")
-    make_btn("Triple_DES")
-    make_btn("ChaCha20")
-    make_btn("Logistic_Map")
-    make_btn("Henon_Map")
-    make_btn("Custom_AES")
-
-    # initialize visuals
-    def set_algorithm(display_name: str):
-        ALGORITHM_SELECTION.set(display_name)
-        for name, btn in ALGORITHM_BUTTONS.items():
-            if name == display_name:
-                btn.config(relief="sunken", bg="#cfe")
-            else:
-                btn.config(relief="raised", bg=parent.cget("bg"))
-
-    set_algorithm(ALGORITHM_DEFAULT)
-    ALGORITHM_BUTTONS[ALGORITHM_DEFAULT].config(relief="sunken", bg="#cfe")
-
-
-def build_result_category_menu(parent) -> None:
-    global RESULT_CATEGORY_SELECTION, RESULT_CATEGORY_BUTTONS
-    RESULT_CATEGORY_SELECTION = tk.StringVar(value=RESULT_CATEGORY_DEFAULT)
-
-    ui_state.result_category_frame = tk.Frame(parent)
-
-    tk.Label(
-        ui_state.result_category_frame, text="Results", font=(None, 10, "bold")
-    ).pack(pady=(0, 6))
-
-    def make_btn(display_name: str) -> None:
-        btn = tk.Button(ui_state.result_category_frame, text=display_name, width=12)
-
-        def on_click() -> None:
-            _set_result_category(display_name)
-
-        btn.config(command=on_click)
-        btn.pack(pady=4, fill="x")
-        RESULT_CATEGORY_BUTTONS[display_name] = btn
-
-    make_btn("All")
-    make_btn("Encrypted")
-    make_btn("Encrypted vs Plain")
-    make_btn("Encrypted vs Encrypted")
-
-    _set_category_button_state(RESULT_CATEGORY_DEFAULT)
-    RESULT_CATEGORY_SELECTION.set(RESULT_CATEGORY_DEFAULT)
-
+# ── UI construction ───────────────────────────────────────────────────────────
 
 def build_encrypt_ui() -> None:
-    # create root (use DnD root if available)
-    if TkinterDnD is not None:
-        root = TkinterDnD.Tk()
-    else:
-        root = tk.Tk()
+    global _result_notebook_frame
 
+    root = TkinterDnD.Tk() if TkinterDnD is not None else tk.Tk()
     root.title("Image Encryptor")
     root.minsize(320, 240)
 
     frame = tk.Frame(root, padx=10, pady=10)
     frame.pack(expand=True, fill="both")
 
-    # Left sidebar for algorithm selection
-    alg_sidebar = tk.Frame(frame)
-    alg_sidebar.pack(side="left", fill="y", padx=(0, 8))
-    build_algorithm_menu(alg_sidebar)
-    tk.Frame(alg_sidebar).pack(fill="both", expand=True)
-    build_result_category_menu(alg_sidebar)
+    # Left sidebar — algorithm selection
+    sidebar = tk.Frame(frame)
+    sidebar.pack(side="left", fill="y", padx=(0, 8))
+    build_algorithm_menu(sidebar)
 
-    # Main content area (image + controls)
+    # Main content
     content = tk.Frame(frame)
     content.pack(side="left", fill="both", expand=True)
 
+    global _img_box
     img_box = build_image_box(
-        content,
-        ui_state,
+        content, ui_state,
         placeholder_text="Drop or choose an image",
         extra_window_height=320,
     )
+    _img_box = img_box
 
-    controls_frame = tk.Frame(content)
-    controls_frame.pack()
+    # Action buttons
+    controls = tk.Frame(content)
+    controls.pack(pady=4)
 
-    build_buttons(controls_frame, img_box)
+    tk.Button(
+        controls, text="Choose image", width=14,
+        command=lambda: choose_image(
+            img_box, ui_state,
+            title="Select image",
+            initialdir=str(base_dir / "images"),
+            extra_window_height=320,
+        ),
+    ).pack(pady=(0, 4))
 
-    ui_state.result_frame = tk.LabelFrame(content, text="Results")
-    ui_state.result_frame.pack(side="left", fill="both", expand=True)
+    btn_row = tk.Frame(controls)
+    btn_row.pack()
+    tk.Button(btn_row, text="Encrypt", width=12,
+              command=lambda: on_encrypt(img_box)).pack(side="left", padx=4)
+    tk.Button(btn_row, text="Encrypt + Analysis", width=18,
+              command=lambda: on_encrypt_and_analysis(img_box)).pack(side="left", padx=4)
+    tk.Button(btn_row, text="Decrypt", width=12,
+              command=lambda: on_decrypt(img_box)).pack(side="left", padx=4)
+    tk.Button(btn_row, text="View plots", width=12,
+              command=lambda: _on_view_plots(root)).pack(side="left", padx=4)
 
-    result_container = tk.Frame(ui_state.result_frame)
-    result_container.pack(fill="both", expand=True)
+    # Result area
+    result_lf = tk.LabelFrame(content, text="Results")
+    result_lf.pack(fill="both", expand=True, pady=(6, 0))
 
-    result_scrollbar = tk.Scrollbar(result_container, orient="vertical")
-    result_scrollbar.pack(side="right", fill="y")
+    _result_notebook_frame = tk.Frame(result_lf)
+    _result_notebook_frame.pack(fill="both", expand=True)
 
-    ui_state.result_widget = tk.Text(
-        result_container,
-        wrap="word",
-        height=14,
-        padx=8,
-        pady=8,
-        yscrollcommand=result_scrollbar.set,
-        relief="flat",
-        borderwidth=0,
+    placeholder = tk.Label(
+        _result_notebook_frame,
+        text="Run Encrypt + Analysis to see results per algorithm.",
+        fg="gray",
     )
-    ui_state.result_widget.pack(side="left", fill="both", expand=True)
-    result_scrollbar.config(command=ui_state.result_widget.yview)
-    ui_state.result_widget.insert(
-        "1.0",
-        "Choose an image, then run Encrypt + Analysis to see all metrics in one scrollable results box.",
-    )
-    ui_state.result_widget.config(state="disabled")
+    placeholder.pack(expand=True)
 
-    # Mode switch button to open analysis UI
-    def switch_to_analyse():
-        try:
-            root.destroy()
-        except Exception:
-            pass
-        try:
-            build_analyse_ui()
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to open Analyse UI:\n{e}")
+    # Store placeholder so we can remove it on first run
+    _result_notebook_frame._placeholder = placeholder  # type: ignore[attr-defined]
 
+    # Bottom mode switch
     bottom = tk.Frame(frame)
     bottom.pack(side="bottom", fill="x", pady=(8, 0))
-    switch_btn = tk.Button(bottom, text="Analyse", width=12, command=switch_to_analyse)
-    switch_btn.pack()
-
-    ui_state.result_frame.pack_forget()
+    tk.Button(
+        bottom, text="Analyse", width=12,
+        command=lambda: (_try_switch(root, build_analyse_ui)),
+    ).pack()
 
     root.mainloop()
+
+
+def _try_switch(root: tk.Misc, builder) -> None:
+    try:
+        root.destroy()
+    except Exception:
+        pass
+    try:
+        builder()
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
 
 
 def main() -> None:
