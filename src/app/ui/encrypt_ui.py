@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import traceback
 import tkinter as tk
 from tkinter import messagebox, ttk
-
-import numpy as np
 
 from ..utils import (
     ImageUiState,
@@ -52,13 +51,11 @@ ALL_ALGORITHMS = [
 
 ui_state = ImageUiState()
 
-# Multi-select algorithm state
 SELECTED_ALGORITHMS: set[str] = {"AES_CTR"}
 ALGORITHM_BUTTONS: dict[str, tk.Button] = {}
 
-# Results state
-LAST_ENCRYPTED_PATHS: dict[str, Path] = {}          # alg -> encrypted path
-LAST_ANALYSIS_DATA: dict[str, list[tuple[str, str, str]]] = {}  # alg -> sections
+LAST_ENCRYPTED_PATHS: dict[str, Path] = {}
+LAST_ANALYSIS_DATA: dict[str, list[tuple[str, str, str]]] = {}
 
 _result_notebook: ttk.Notebook | None = None
 _result_notebook_frame: tk.Frame | None = None
@@ -67,12 +64,10 @@ _img_box: tk.Canvas | None = None
 base_dir = Path(__file__).resolve().parent.parent / "shared"
 
 
-# ── Algorithm selection ───────────────────────────────────────────────────────
-
 def _toggle_algorithm(name: str) -> None:
     if name in SELECTED_ALGORITHMS:
         if len(SELECTED_ALGORITHMS) == 1:
-            return  # always keep at least one selected
+            return
         SELECTED_ALGORITHMS.discard(name)
     else:
         SELECTED_ALGORITHMS.add(name)
@@ -108,8 +103,6 @@ def build_algorithm_menu(parent: tk.Widget) -> None:
 
     _refresh_algorithm_buttons()
 
-
-# ── Analysis helpers ──────────────────────────────────────────────────────────
 
 def _make_section(category: str, title: str, body: str) -> tuple[str, str, str]:
     return (category, title, body)
@@ -162,8 +155,6 @@ def _run_analysis(encrypted_path: Path) -> list[tuple[str, str, str]]:
             _fmt("SSIM results", structural_similarity(e, p))),
     ]
 
-
-# ── Result notebook ───────────────────────────────────────────────────────────
 
 def _build_result_tab(
     notebook: ttk.Notebook,
@@ -228,7 +219,6 @@ def _rebuild_result_notebook() -> None:
     if _result_notebook_frame is None:
         return
 
-    # Remove placeholder and any previous notebook
     for widget in _result_notebook_frame.winfo_children():
         widget.destroy()
     _result_notebook = None
@@ -257,14 +247,65 @@ def _rebuild_result_notebook() -> None:
 
     nb.bind("<<NotebookTabChanged>>", _on_tab_changed)
 
-    # Ensure the result frame is visible
     try:
         _result_notebook_frame.master.pack(fill="both", expand=True)
     except Exception:
         pass
 
 
-# ── Actions ───────────────────────────────────────────────────────────────────
+def _save_analysis_json(enc_path: Path, sections: list[tuple[str, str, str]]) -> None:
+    json_dir = enc_path.parent.parent / "analysis_results"
+    json_dir.mkdir(parents=True, exist_ok=True)
+    json_path = json_dir / f"{enc_path.stem}_analysis.json"
+    data = [{"category": c, "title": t, "body": b} for c, t, b in sections]
+    json_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _load_analysis_json(enc_path: Path) -> list[tuple[str, str, str]] | None:
+    json_path = (
+        enc_path.parent.parent / "analysis_results"
+        / f"{enc_path.stem}_analysis.json"
+    )
+    if not json_path.exists():
+        return None
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        return [(item["category"], item["title"], item["body"]) for item in data]
+    except Exception:
+        return None
+
+
+def _alg_from_enc_path(path: Path) -> str | None:
+    """Detect algorithm name from an encrypted filename prefix."""
+    stem = path.stem.lower()
+    for alg in ALL_ALGORITHMS:
+        if stem.startswith(alg.lower() + "_enc_"):
+            return alg
+    return None
+
+
+def _choose_and_auto_load(img_box: tk.Canvas) -> None:
+    choose_image(
+        img_box, ui_state,
+        title="Select image",
+        initialdir=str(base_dir / "images"),
+        extra_window_height=320,
+    )
+    path = ui_state.selected_image_path
+    if path is None or "_enc_" not in path.name:
+        return
+    alg = _alg_from_enc_path(path)
+    if alg is None:
+        return
+    sections = _load_analysis_json(path)
+    if sections is None:
+        return
+    LAST_ENCRYPTED_PATHS.clear()
+    LAST_ENCRYPTED_PATHS[alg] = path
+    LAST_ANALYSIS_DATA.clear()
+    LAST_ANALYSIS_DATA[alg] = sections
+    _rebuild_result_notebook()
+
 
 def on_encrypt(canvas: tk.Canvas) -> dict[str, Path]:
     if ui_state.selected_image_path is None:
@@ -323,7 +364,12 @@ def on_complete_analysis(paths: dict[str, Path] | None = None) -> None:
 
     for alg, enc_path in paths.items():
         try:
-            LAST_ANALYSIS_DATA[alg] = _run_analysis(enc_path)
+            sections = _run_analysis(enc_path)
+            LAST_ANALYSIS_DATA[alg] = sections
+            try:
+                _save_analysis_json(enc_path, sections)
+            except Exception:
+                pass
         except Exception as exc:
             errors.append(f"{alg}:\n{exc}\n{traceback.format_exc()}")
 
@@ -396,10 +442,12 @@ def _on_view_plots(root: tk.Misc) -> None:
         if alg and alg in LAST_ENCRYPTED_PATHS
         else (next(iter(LAST_ENCRYPTED_PATHS.values()), None) or ui_state.selected_image_path)
     )
-    open_plots_window(path, parent=root)
+    open_plots_window(
+        path,
+        parent=root,
+        all_encrypted_paths=None,
+    )
 
-
-# ── UI construction ───────────────────────────────────────────────────────────
 
 def build_encrypt_ui() -> None:
     global _result_notebook_frame
@@ -434,12 +482,7 @@ def build_encrypt_ui() -> None:
 
     tk.Button(
         controls, text="Choose image", width=14,
-        command=lambda: choose_image(
-            img_box, ui_state,
-            title="Select image",
-            initialdir=str(base_dir / "images"),
-            extra_window_height=320,
-        ),
+        command=lambda: _choose_and_auto_load(img_box),
     ).pack(pady=(0, 4))
 
     btn_row = tk.Frame(controls)
@@ -467,10 +510,8 @@ def build_encrypt_ui() -> None:
     )
     placeholder.pack(expand=True)
 
-    # Store placeholder so we can remove it on first run
-    _result_notebook_frame._placeholder = placeholder  # type: ignore[attr-defined]
+    _result_notebook_frame._placeholder = placeholder
 
-    # Bottom mode switch
     bottom = tk.Frame(frame)
     bottom.pack(side="bottom", fill="x", pady=(8, 0))
     tk.Button(

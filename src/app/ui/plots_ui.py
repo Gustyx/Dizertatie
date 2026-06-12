@@ -11,6 +11,7 @@ from ..plots.generate_bitplane_plots import _render_bitplane_bar
 from ..plots.generate_bitplane_comparison import _render_bitplane_comparison
 from ..plots.generate_correlation_plots import _render_correlation_plot
 from ..plots.generate_histogram_plots import _render_histogram_pair
+from ..plots.generate_histogram_comparison import render_histogram_all_algorithms
 
 
 def _resolve_related_paths(encrypted_path: Path) -> tuple[Path, Path]:
@@ -96,9 +97,29 @@ def _build_scrollable_tab(parent: ttk.Notebook) -> tuple[ttk.Frame, ttk.Frame]:
     return tab, content
 
 
+def _find_all_encrypted_variants(encrypted_path: Path) -> dict[str, Path]:
+    """Scan the encrypted/ folder for every algorithm variant of the same plain image."""
+    _, _, plain_name = encrypted_path.name.partition("_enc_")
+    plain_stem = Path(plain_name).stem
+    encrypted_dir = encrypted_path.parent
+
+    result: dict[str, Path] = {}
+    for candidate in sorted(encrypted_dir.iterdir()):
+        if "_enc_" not in candidate.name:
+            continue
+        _, _, cand_plain = candidate.name.partition("_enc_")
+        if Path(cand_plain).stem != plain_stem:
+            continue
+        alg_prefix = candidate.name.split("_enc_")[0]
+        result[alg_prefix] = candidate
+
+    return result
+
+
 def open_plots_window(
     encrypted_image_path: Path | None,
     parent: tk.Misc | None = None,
+    all_encrypted_paths: dict[str, Path] | None = None,
 ) -> tk.Toplevel | None:
     if encrypted_image_path is None:
         messagebox.showwarning("No image", "Please choose and encrypt an image first.")
@@ -109,6 +130,9 @@ def open_plots_window(
     except Exception as exc:
         messagebox.showerror("Plots unavailable", str(exc))
         return None
+
+    if all_encrypted_paths is None:
+        all_encrypted_paths = _find_all_encrypted_variants(encrypted_image_path)
 
     if parent is None:
         parent = tk._get_default_root()
@@ -160,50 +184,48 @@ def open_plots_window(
 
     plot_images: list[ImageTk.PhotoImage] = window._plot_images  # type: ignore[attr-defined]
 
-    correlation_path = Path(temp_dir.name) / "correlation_plain_vs_encrypted.png"
-    _render_correlation_plot(
-        plain_path,
-        encrypted_image_path,
-        correlation_path,
-        title="Plain vs Encrypted correlation",
-        max_points=12000,
-    )
-    _add_image_panel(
-        correlation_content,
-        "Plain vs encrypted",
-        correlation_path,
-        plot_images,
-    )
+    # correlation_path = Path(temp_dir.name) / "correlation_plain_vs_encrypted.png"
+    # _render_correlation_plot(
+    #     plain_path,
+    #     encrypted_image_path,
+    #     correlation_path,
+    #     title="Plain vs Encrypted correlation",
+    #     max_points=12000,
+    # )
+    # _add_image_panel(
+    #     correlation_content,
+    #     "Plain vs encrypted",
+    #     correlation_path,
+    #     plot_images,
+    # )
 
-    if plus_one_bit_path.exists():
-        correlation_plus_path = (
-            Path(temp_dir.name) / "correlation_encrypted_vs_plus_one_bit.png"
-        )
-        _render_correlation_plot(
-            encrypted_image_path,
-            plus_one_bit_path,
-            correlation_plus_path,
-            title="Encrypted vs Encrypted plus one bit correlation",
-            max_points=12000,
-        )
-        _add_image_panel(
-            correlation_content,
-            "Encrypted vs encrypted + one bit",
-            correlation_plus_path,
-            plot_images,
-        )
+    # if plus_one_bit_path.exists():
+    #     correlation_plus_path = (
+    #         Path(temp_dir.name) / "correlation_encrypted_vs_plus_one_bit.png"
+    #     )
+    #     _render_correlation_plot(
+    #         encrypted_image_path,
+    #         plus_one_bit_path,
+    #         correlation_plus_path,
+    #         title="Encrypted vs Encrypted plus one bit correlation",
+    #         max_points=12000,
+    #     )
+    #     _add_image_panel(
+    #         correlation_content,
+    #         "Encrypted vs encrypted + one bit",
+    #         correlation_plus_path,
+    #         plot_images,
+    #     )
 
-    histogram_path = Path(temp_dir.name) / "histogram_plain_vs_encrypted.png"
-    _render_histogram_pair(
-        plain_path,
-        encrypted_image_path,
-        histogram_path,
-        normalize=False,
-    )
+    enc_paths_for_hist = all_encrypted_paths or {
+        encrypted_image_path.stem: encrypted_image_path
+    }
+    hist_all_path = Path(temp_dir.name) / "histogram_all_algorithms.png"
+    render_histogram_all_algorithms(plain_path, enc_paths_for_hist, hist_all_path)
     _add_image_panel(
         histogram_content,
-        "Histogram comparison",
-        histogram_path,
+        "Histogram comparison (original vs all encrypted algorithms)",
+        hist_all_path,
         plot_images,
         max_size=(1100, 520),
     )
@@ -224,45 +246,45 @@ def open_plots_window(
         max_size=(1100, 300),
     )
 
-    bitplane_path = Path(temp_dir.name) / "bitplane_plain_vs_encrypted.png"
-    _render_bitplane_bar(plain_path, encrypted_image_path, bitplane_path)
-    _add_image_panel(
-        bitplane_content,
-        "Bit-plane set-bit percentages",
-        bitplane_path,
-        plot_images,
-        max_size=(1100, 520),
-    )
+    # bitplane_path = Path(temp_dir.name) / "bitplane_plain_vs_encrypted.png"
+    # _render_bitplane_bar(plain_path, encrypted_image_path, bitplane_path)
+    # _add_image_panel(
+    #     bitplane_content,
+    #     "Bit-plane set-bit percentages",
+    #     bitplane_path,
+    #     plot_images,
+    #     max_size=(1100, 520),
+    # )
 
-    if plus_one_bit_path.exists():
-        bitplane_plus_grid_path = (
-            Path(temp_dir.name) / "bitplane_grid_encrypted_vs_plus_one.png"
-        )
-        _render_bitplane_comparison(
-            encrypted_image_path,
-            plus_one_bit_path,
-            bitplane_plus_grid_path,
-            plain_label="Encrypted",
-            enc_label="Encrypted + 1 bit",
-        )
-        _add_image_panel(
-            bitplane_content,
-            "Bit-plane decomposition (encrypted vs encrypted + one bit)",
-            bitplane_plus_grid_path,
-            plot_images,
-            max_size=(1100, 300),
-        )
+    # if plus_one_bit_path.exists():
+    #     bitplane_plus_grid_path = (
+    #         Path(temp_dir.name) / "bitplane_grid_encrypted_vs_plus_one.png"
+    #     )
+    #     _render_bitplane_comparison(
+    #         encrypted_image_path,
+    #         plus_one_bit_path,
+    #         bitplane_plus_grid_path,
+    #         plain_label="Encrypted",
+    #         enc_label="Encrypted + 1 bit",
+    #     )
+    #     _add_image_panel(
+    #         bitplane_content,
+    #         "Bit-plane decomposition (encrypted vs encrypted + one bit)",
+    #         bitplane_plus_grid_path,
+    #         plot_images,
+    #         max_size=(1100, 300),
+    #     )
 
-        bitplane_plus_path = Path(temp_dir.name) / "bitplane_encrypted_vs_plus_one.png"
-        _render_bitplane_bar(
-            encrypted_image_path, plus_one_bit_path, bitplane_plus_path
-        )
-        _add_image_panel(
-            bitplane_content,
-            "Set-bit percentages (encrypted vs encrypted + one bit)",
-            bitplane_plus_path,
-            plot_images,
-            max_size=(1100, 520),
-        )
+    #     bitplane_plus_path = Path(temp_dir.name) / "bitplane_encrypted_vs_plus_one.png"
+    #     _render_bitplane_bar(
+    #         encrypted_image_path, plus_one_bit_path, bitplane_plus_path
+    #     )
+    #     _add_image_panel(
+    #         bitplane_content,
+    #         "Set-bit percentages (encrypted vs encrypted + one bit)",
+    #         bitplane_plus_path,
+    #         plot_images,
+    #         max_size=(1100, 520),
+    #     )
 
     return window
