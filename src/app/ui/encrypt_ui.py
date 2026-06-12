@@ -329,6 +329,10 @@ def on_encrypt(canvas: tk.Canvas) -> dict[str, Path]:
         return {}
 
     input_path = ui_state.selected_image_path
+    # Block encryption of already-encrypted images
+    if "_enc_" in input_path.name:
+        messagebox.showwarning("Already encrypted", "The selected image is already encrypted. Please choose a plain image.")
+        return {}
     # If the displayed image is a decrypted file, resolve back to the plain image
     if "_dec_" in input_path.name and input_path.parent.name == "decrypted":
         _, _, plain_name = input_path.name.partition("_dec_")
