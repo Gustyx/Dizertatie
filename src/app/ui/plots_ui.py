@@ -14,6 +14,7 @@ from ..plots.generate_histogram_plots import _render_histogram_pair
 from ..plots.generate_histogram_comparison import render_histogram_all_algorithms
 from ..plots.generate_entropy_bars import render_entropy_bars
 from ..plots.generate_correlation_bars import render_correlation_bars
+from ..plots.generate_scatter_comparison import render_scatter_comparison
 
 
 def _resolve_related_paths(encrypted_path: Path) -> tuple[Path, Path]:
@@ -202,6 +203,17 @@ def open_plots_window(
         max_size=(1100, 520),
     )
 
+    scatter_path = Path(temp_dir.name) / "correlation_scatter.png"
+    render_scatter_comparison(plain_path, enc_paths_for_plots, scatter_path)
+    n_rows = 1 + len([p for p in enc_paths_for_plots.values() if p.exists()])
+    _add_image_panel(
+        correlation_content,
+        "Pixel correlation scatter (Original + all algorithms)",
+        scatter_path,
+        plot_images,
+        max_size=(1100, 400 * n_rows),
+    )
+
     # correlation_path = Path(temp_dir.name) / "correlation_plain_vs_encrypted.png"
     # _render_correlation_plot(
     #     plain_path,
@@ -255,31 +267,31 @@ def open_plots_window(
         max_size=(1100, 520),
     )
 
-    bitplane_grid_path = Path(temp_dir.name) / "bitplane_grid_plain_vs_encrypted.png"
-    _render_bitplane_comparison(
-        plain_path,
-        encrypted_image_path,
-        bitplane_grid_path,
-        plain_label="Original",
-        enc_label="Encrypted",
-    )
-    _add_image_panel(
-        bitplane_content,
-        "Bit-plane decomposition (plain vs encrypted)",
-        bitplane_grid_path,
-        plot_images,
-        max_size=(1100, 300),
-    )
-
-    # bitplane_path = Path(temp_dir.name) / "bitplane_plain_vs_encrypted.png"
-    # _render_bitplane_bar(plain_path, encrypted_image_path, bitplane_path)
+    # bitplane_grid_path = Path(temp_dir.name) / "bitplane_grid_plain_vs_encrypted.png"
+    # _render_bitplane_comparison(
+    #     plain_path,
+    #     encrypted_image_path,
+    #     bitplane_grid_path,
+    #     plain_label="Original",
+    #     enc_label="Encrypted",
+    # )
     # _add_image_panel(
     #     bitplane_content,
-    #     "Bit-plane set-bit percentages",
-    #     bitplane_path,
+    #     "Bit-plane decomposition (plain vs encrypted)",
+    #     bitplane_grid_path,
     #     plot_images,
-    #     max_size=(1100, 520),
+    #     max_size=(1100, 300),
     # )
+
+    bitplane_path = Path(temp_dir.name) / "bitplane_plain_vs_encrypted.png"
+    _render_bitplane_bar(plain_path, encrypted_image_path, bitplane_path)
+    _add_image_panel(
+        bitplane_content,
+        "Bit-plane set-bit percentages",
+        bitplane_path,
+        plot_images,
+        max_size=(1100, 520),
+    )
 
     # if plus_one_bit_path.exists():
     #     bitplane_plus_grid_path = (
