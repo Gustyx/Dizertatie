@@ -8,7 +8,7 @@ from tkinter import messagebox, ttk
 from PIL import Image, ImageTk
 
 from ..plots.generate_bitplane_plots import _render_bitplane_bar
-from ..plots.generate_bitplane_comparison import _render_bitplane_comparison
+from ..plots.generate_bitplane_comparison import _render_bitplane_comparison, render_bitplane_bars_all_algorithms
 from ..plots.generate_correlation_plots import _render_correlation_plot
 from ..plots.generate_histogram_plots import _render_histogram_pair
 from ..plots.generate_histogram_comparison import render_histogram_all_algorithms
@@ -283,14 +283,15 @@ def open_plots_window(
     #     max_size=(1100, 300),
     # )
 
-    bitplane_path = Path(temp_dir.name) / "bitplane_plain_vs_encrypted.png"
-    _render_bitplane_bar(plain_path, encrypted_image_path, bitplane_path)
+    bitplane_bars_all_path = Path(temp_dir.name) / "bitplane_bars_all_algorithms.png"
+    render_bitplane_bars_all_algorithms(plain_path, enc_paths_for_plots, bitplane_bars_all_path)
+    n_algs = len([p for p in enc_paths_for_plots.values() if p.exists()])
     _add_image_panel(
         bitplane_content,
-        "Bit-plane set-bit percentages",
-        bitplane_path,
+        "Bit-plane set-bit percentages — all algorithms",
+        bitplane_bars_all_path,
         plot_images,
-        max_size=(1100, 520),
+        max_size=(1100, 400 * n_algs),
     )
 
     # if plus_one_bit_path.exists():
