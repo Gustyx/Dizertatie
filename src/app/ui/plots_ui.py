@@ -13,6 +13,7 @@ from ..plots.generate_correlation_plots import _render_correlation_plot
 from ..plots.generate_histogram_plots import _render_histogram_pair
 from ..plots.generate_histogram_comparison import render_histogram_all_algorithms
 from ..plots.generate_entropy_bars import render_entropy_bars
+from ..plots.generate_correlation_bars import render_correlation_bars
 
 
 def _resolve_related_paths(encrypted_path: Path) -> tuple[Path, Path]:
@@ -187,6 +188,20 @@ def open_plots_window(
 
     plot_images: list[ImageTk.PhotoImage] = window._plot_images  # type: ignore[attr-defined]
 
+    enc_paths_for_plots = all_encrypted_paths or {
+        encrypted_image_path.stem: encrypted_image_path
+    }
+
+    correlation_bars_path = Path(temp_dir.name) / "correlation_bars.png"
+    render_correlation_bars(enc_paths_for_plots, correlation_bars_path)
+    _add_image_panel(
+        correlation_content,
+        "Pixel correlation per algorithm (H / V / D)",
+        correlation_bars_path,
+        plot_images,
+        max_size=(1100, 520),
+    )
+
     # correlation_path = Path(temp_dir.name) / "correlation_plain_vs_encrypted.png"
     # _render_correlation_plot(
     #     plain_path,
@@ -220,11 +235,8 @@ def open_plots_window(
     #         plot_images,
     #     )
 
-    enc_paths_for_hist = all_encrypted_paths or {
-        encrypted_image_path.stem: encrypted_image_path
-    }
     hist_all_path = Path(temp_dir.name) / "histogram_all_algorithms.png"
-    render_histogram_all_algorithms(plain_path, enc_paths_for_hist, hist_all_path)
+    render_histogram_all_algorithms(plain_path, enc_paths_for_plots, hist_all_path)
     _add_image_panel(
         histogram_content,
         "Histogram comparison (original vs all encrypted algorithms)",
@@ -234,7 +246,7 @@ def open_plots_window(
     )
 
     entropy_bars_path = Path(temp_dir.name) / "entropy_bars.png"
-    render_entropy_bars(enc_paths_for_hist, entropy_bars_path)
+    render_entropy_bars(enc_paths_for_plots, entropy_bars_path)
     _add_image_panel(
         entropy_content,
         "Shannon entropy per algorithm",
