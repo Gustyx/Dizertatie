@@ -12,6 +12,7 @@ from ..plots.generate_bitplane_comparison import _render_bitplane_comparison
 from ..plots.generate_correlation_plots import _render_correlation_plot
 from ..plots.generate_histogram_plots import _render_histogram_pair
 from ..plots.generate_histogram_comparison import render_histogram_all_algorithms
+from ..plots.generate_entropy_bars import render_entropy_bars
 
 
 def _resolve_related_paths(encrypted_path: Path) -> tuple[Path, Path]:
@@ -177,10 +178,12 @@ def open_plots_window(
     correlation_tab, correlation_content = _build_scrollable_tab(notebook)
     histogram_tab, histogram_content = _build_scrollable_tab(notebook)
     bitplane_tab, bitplane_content = _build_scrollable_tab(notebook)
+    entropy_tab, entropy_content = _build_scrollable_tab(notebook)
 
     notebook.add(correlation_tab, text="Correlation")
     notebook.add(histogram_tab, text="Histogram")
     notebook.add(bitplane_tab, text="Bitplane")
+    notebook.add(entropy_tab, text="Entropy")
 
     plot_images: list[ImageTk.PhotoImage] = window._plot_images  # type: ignore[attr-defined]
 
@@ -226,6 +229,16 @@ def open_plots_window(
         histogram_content,
         "Histogram comparison (original vs all encrypted algorithms)",
         hist_all_path,
+        plot_images,
+        max_size=(1100, 520),
+    )
+
+    entropy_bars_path = Path(temp_dir.name) / "entropy_bars.png"
+    render_entropy_bars(enc_paths_for_hist, entropy_bars_path)
+    _add_image_panel(
+        entropy_content,
+        "Shannon entropy per algorithm",
+        entropy_bars_path,
         plot_images,
         max_size=(1100, 520),
     )
