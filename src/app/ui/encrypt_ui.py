@@ -66,8 +66,6 @@ base_dir = Path(__file__).resolve().parent.parent / "shared"
 
 def _toggle_algorithm(name: str) -> None:
     if name in SELECTED_ALGORITHMS:
-        if len(SELECTED_ALGORITHMS) == 1:
-            return
         SELECTED_ALGORITHMS.discard(name)
     else:
         SELECTED_ALGORITHMS.add(name)
@@ -294,17 +292,32 @@ def _choose_and_auto_load(img_box: tk.Canvas) -> None:
     path = ui_state.selected_image_path
     if path is None or "_enc_" not in path.name:
         return
-    alg = _alg_from_enc_path(path)
-    if alg is None:
-        return
-    sections = _load_analysis_json(path)
-    if sections is None:
-        return
+
+    # Scan all encrypted variants of the same plain image in the same folder
+    _, _, plain_name = path.name.partition("_enc_")
+    plain_stem = Path(plain_name).stem
+    encrypted_dir = path.parent
+
     LAST_ENCRYPTED_PATHS.clear()
-    LAST_ENCRYPTED_PATHS[alg] = path
     LAST_ANALYSIS_DATA.clear()
-    LAST_ANALYSIS_DATA[alg] = sections
-    _rebuild_result_notebook()
+
+    for candidate in sorted(encrypted_dir.iterdir()):
+        if "_enc_" not in candidate.name:
+            continue
+        _, _, cand_plain = candidate.name.partition("_enc_")
+        if Path(cand_plain).stem != plain_stem:
+            continue
+        alg = _alg_from_enc_path(candidate)
+        if alg is None:
+            alg = candidate.name.split("_enc_")[0]
+        sections = _load_analysis_json(candidate)
+        if sections is None:
+            continue
+        LAST_ENCRYPTED_PATHS[alg] = candidate
+        LAST_ANALYSIS_DATA[alg] = sections
+
+    if LAST_ANALYSIS_DATA:
+        _rebuild_result_notebook()
 
 
 def on_encrypt(canvas: tk.Canvas) -> dict[str, Path]:
@@ -316,6 +329,13 @@ def on_encrypt(canvas: tk.Canvas) -> dict[str, Path]:
         return {}
 
     input_path = ui_state.selected_image_path
+    # If the displayed image is a decrypted file, resolve back to the plain image
+    if "_dec_" in input_path.name and input_path.parent.name == "decrypted":
+        _, _, plain_name = input_path.name.partition("_dec_")
+        plain_candidate = input_path.parent.parent / "plain" / plain_name
+        if plain_candidate.exists():
+            input_path = plain_candidate
+
     input_path_2 = add_one_bit_to_pixel(input_path)
 
     results: dict[str, Path] = {}
@@ -375,6 +395,28 @@ def on_complete_analysis(paths: dict[str, Path] | None = None) -> None:
 
     if errors:
         messagebox.showerror("Analysis errors", "\n\n".join(errors))
+
+    # Also load any other encrypted variants of the same plain image that
+    # have saved JSONs but weren't part of this encryption run
+    first_enc = next(iter(paths.values()), None)
+    if first_enc is not None:
+        _, _, plain_name = first_enc.name.partition("_enc_")
+        plain_stem = Path(plain_name).stem
+        encrypted_dir = first_enc.parent
+        for candidate in sorted(encrypted_dir.iterdir()):
+            if "_enc_" not in candidate.name:
+                continue
+            _, _, cand_plain = candidate.name.partition("_enc_")
+            if Path(cand_plain).stem != plain_stem:
+                continue
+            alg = _alg_from_enc_path(candidate) or candidate.name.split("_enc_")[0]
+            if alg in LAST_ANALYSIS_DATA:
+                continue  # already computed fresh
+            sections = _load_analysis_json(candidate)
+            if sections is None:
+                continue
+            LAST_ENCRYPTED_PATHS[alg] = candidate
+            LAST_ANALYSIS_DATA[alg] = sections
 
     _rebuild_result_notebook()
 
