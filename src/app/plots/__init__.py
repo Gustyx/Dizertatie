@@ -1,7 +1,7 @@
-from .plot_generation_helper import _collect_dataset_roots, _find_encrypted_directory, _find_plain_directories, _group_encrypted_files, _iter_image_files
-from .generate_bitplane_comparison import render_bitplane_bars_all_algorithms
-from .generate_histogram_comparison import render_histogram_all_algorithms
-from .generate_entropy_bars import render_entropy_bars
-from .generate_correlation_bars import render_correlation_bars
-from .generate_scatter_comparison import render_scatter_comparison
-from .generate_speed_comaprison import render_speed_comparison
+from .plot_generation_helper import _iter_image_files
+from .generate_bitplane_plot import render_bitplane_bars_all_algorithms
+from .generate_histogram_plot import render_histogram_plot
+from .generate_entropy_plot import render_entropy_plot
+from .generate_correlation_plot import render_correlation_plot
+from .generate_scatter_plot import render_scatter_plot
+from .generate_speed_plot import render_speed_plot

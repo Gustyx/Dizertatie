@@ -24,7 +24,7 @@ _ALG_COLORS = [
 ]
 
 
-def render_entropy_bars(
+def render_entropy_plot(
     encrypted_paths: dict[str, Path],
     output_path: Path,
 ) -> None:
@@ -53,7 +53,6 @@ def render_entropy_bars(
     ax.axhline(_THRESHOLD, color="#E53935", linewidth=1.4, linestyle="--",
                label=f"Threshold ({_THRESHOLD})", zorder=4)
 
-    # Value labels on top of each bar
     for bar, val in zip(bars, entropy_values):
         ax.text(
             bar.get_x() + bar.get_width() / 2,

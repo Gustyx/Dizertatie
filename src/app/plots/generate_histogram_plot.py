@@ -32,7 +32,7 @@ def _plot_rgb_histogram(ax: "plt.Axes", img: np.ndarray, title: str) -> None:
     ax.spines["right"].set_visible(False)
 
 
-def render_histogram_all_algorithms(
+def render_histogram_plot(
     plain_path: Path,
     encrypted_paths: dict[str, Path],
     output_path: Path,

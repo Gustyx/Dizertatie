@@ -9,11 +9,11 @@ from PIL import Image, ImageTk
 
 from ..plots import (
     render_bitplane_bars_all_algorithms,
-    render_histogram_all_algorithms,
-    render_entropy_bars,
-    render_correlation_bars,
-    render_scatter_comparison,
-    render_speed_comparison,
+    render_histogram_plot,
+    render_entropy_plot,
+    render_correlation_plot,
+    render_scatter_plot,
+    render_speed_plot,
 )
 
 
@@ -235,7 +235,7 @@ def open_plots_window(
     }
 
     correlation_bars_path = Path(temp_dir.name) / "correlation_bars.png"
-    render_correlation_bars(enc_paths_for_plots, correlation_bars_path)
+    render_correlation_plot(enc_paths_for_plots, correlation_bars_path)
     _add_image_panel(
         correlation_content,
         "Pixel correlation per algorithm (H / V / D)",
@@ -245,7 +245,7 @@ def open_plots_window(
     )
 
     scatter_path = Path(temp_dir.name) / "correlation_scatter.png"
-    render_scatter_comparison(plain_path, enc_paths_for_plots, scatter_path)
+    render_scatter_plot(plain_path, enc_paths_for_plots, scatter_path)
     n_rows = 1 + len([p for p in enc_paths_for_plots.values() if p.exists()])
     _add_image_panel(
         correlation_content,
@@ -256,7 +256,7 @@ def open_plots_window(
     )
 
     hist_all_path = Path(temp_dir.name) / "histogram_all_algorithms.png"
-    render_histogram_all_algorithms(plain_path, enc_paths_for_plots, hist_all_path)
+    render_histogram_plot(plain_path, enc_paths_for_plots, hist_all_path)
     _add_image_panel(
         histogram_content,
         "Histogram comparison (original vs all encrypted algorithms)",
@@ -266,7 +266,7 @@ def open_plots_window(
     )
 
     entropy_bars_path = Path(temp_dir.name) / "entropy_bars.png"
-    render_entropy_bars(enc_paths_for_plots, entropy_bars_path)
+    render_entropy_plot(enc_paths_for_plots, entropy_bars_path)
     _add_image_panel(
         entropy_content,
         "Shannon entropy per algorithm",
@@ -288,7 +288,7 @@ def open_plots_window(
 
     if encryption_times:
         speed_path = Path(temp_dir.name) / "speed_comparison.png"
-        render_speed_comparison(encryption_times, speed_path)
+        render_speed_plot(encryption_times, speed_path)
         if speed_path.exists():
             _add_image_panel(
                 speed_content,

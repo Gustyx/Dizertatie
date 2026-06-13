@@ -34,7 +34,7 @@ _DIRECTIONS = [
 ]
 
 
-def render_correlation_bars(
+def render_correlation_plot(
     encrypted_paths: dict[str, Path],
     output_path: Path,
 ) -> None:

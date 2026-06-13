@@ -20,7 +20,7 @@ _ALG_COLORS = [
 ]
 
 
-def render_speed_comparison(
+def render_speed_plot(
     encryption_times: dict[str, float],
     output_path: Path,
 ) -> None:
@@ -29,7 +29,6 @@ def render_speed_comparison(
     if not items:
         return
 
-    # Sort fastest first (shortest bar on top)
     items.sort(key=lambda x: x[1])
     labels = [alg.replace("_", " ") for alg, _ in items]
     times = [t for _, t in items]

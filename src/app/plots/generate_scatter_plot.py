@@ -9,7 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ..utils import extract_preview_pixels, load_rgb_image
+from .plot_generation_helper import _load_preview
 
 _DIRECTIONS = ["Horizontal", "Vertical", "Diagonal"]
 
@@ -26,11 +26,6 @@ _ALG_COLORS = [
 _BG_COLOR = "#0d1117"
 
 
-def _load_rgb(path: Path) -> np.ndarray:
-    pixels, _ = extract_preview_pixels(path, max_size=(2048, 2048))
-    return load_rgb_image(pixels)
-
-
 def _luminance(img: np.ndarray) -> np.ndarray:
     return (
         0.2989 * img[..., 0].astype(np.float32)
@@ -44,21 +39,20 @@ def _adjacent_pairs(channel: np.ndarray, direction: str) -> tuple[np.ndarray, np
         return channel[:, :-1].ravel(), channel[:, 1:].ravel()
     elif direction == "Vertical":
         return channel[:-1, :].ravel(), channel[1:, :].ravel()
-    else:  # Diagonal
+    else:
         return channel[:-1, :-1].ravel(), channel[1:, 1:].ravel()
 
 
-
-def render_scatter_comparison(
+def render_scatter_plot(
     plain_path: Path,
     encrypted_paths: dict[str, Path],
     output_path: Path,
 ) -> None:
     """N_rows × 3 density heatmap grid: rows = plain + each algorithm, cols = H/V/D."""
-    images: list[tuple[str, np.ndarray]] = [("Original", _load_rgb(plain_path))]
+    images: list[tuple[str, np.ndarray]] = [("Original", _load_preview(plain_path))]
     for alg, p in encrypted_paths.items():
         if p.exists():
-            images.append((alg.replace("_", " "), _load_rgb(p)))
+            images.append((alg.replace("_", " "), _load_preview(p)))
 
     n_rows = len(images)
     n_cols = 3
@@ -80,10 +74,8 @@ def render_scatter_comparison(
 
             xi, xi1 = _adjacent_pairs(lum, direction)
 
-            # 2D density heatmap — makes even subtle correlation visible
             h, xedges, yedges = np.histogram2d(xi, xi1, bins=256,
                                                range=[[0, 255], [0, 255]])
-            # Log scale so both dense (plain) and sparse (encrypted) structure shows
             h = np.log1p(h)
             ax.imshow(
                 h.T, origin="lower", aspect="auto",

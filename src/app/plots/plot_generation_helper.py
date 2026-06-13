@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import re
+import numpy as np
 from pathlib import Path
 from typing import Iterable
 
+from ..utils import extract_preview_pixels, load_rgb_image
+
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 ENCODED_PATTERN = re.compile(r"^(?P<algorithm>[a-z0-9_]+)_enc_(?P<plain_stem>.+)$")
+
+
+def _load_preview(path: Path) -> np.ndarray:
+    pixels, _ = extract_preview_pixels(path, max_size=(2048, 2048))
+    return load_rgb_image(pixels)
 
 
 def _iter_image_files(folder: Path) -> Iterable[Path]:
