@@ -1,7 +1,3 @@
-"""
-Shared AES-128 core used by custom_aes_v1 (ECB) and custom_aes_v2 (CBC).
-Provides: lookup tables, Numba-JIT block cipher, pure-Python fallback.
-"""
 from typing import List
 
 import numpy as np
@@ -11,7 +7,7 @@ try:
     _NUMBA = True
 except ImportError:
     _NUMBA = False
-    def njit(fn=None, **kw):  # type: ignore[misc]
+    def njit(fn=None, **kw):
         return (lambda f: f)(fn) if fn else (lambda f: f)
 
 # ---------------------------------------------------------------------------

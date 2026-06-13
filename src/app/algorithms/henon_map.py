@@ -8,16 +8,14 @@ import numpy as np
 
 try:
     from numba import njit as _njit
-    _NUMBA_AVAILABLE = True
 except ImportError:
-    _NUMBA_AVAILABLE = False
 
-    def _njit(fn):  # type: ignore[misc]
+    def _njit(fn):
         return fn
 
 
 _BURN_IN_STEPS: int = 256
-_HASH_CHUNK: int = 64   # Henon floats hashed per SHA-256 call -> 32 key bytes
+_HASH_CHUNK: int = 64
 
 
 def _seed_from_key(key_phrase: str, label: str) -> int:
@@ -31,8 +29,8 @@ def _initial_state(key_phrase: str, label: str) -> tuple[float, float, float, fl
     y0 = (((seed >> 8) & ((1 << 53) - 1)) + 1) / float(1 << 53)
     a_seed = _seed_from_key(key_phrase, f"{label}:a")
     b_seed = _seed_from_key(key_phrase, f"{label}:b")
-    a = 1.2 + (a_seed / float(1 << 64)) * 0.6   # in [1.2, 1.8]
-    b = 0.1 + (b_seed / float(1 << 64)) * 0.4   # in [0.1, 0.5]
+    a = 1.2 + (a_seed / float(1 << 64)) * 0.6
+    b = 0.1 + (b_seed / float(1 << 64)) * 0.4
     return x0, y0, a, b
 
 

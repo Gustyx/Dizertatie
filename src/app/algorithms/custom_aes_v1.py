@@ -1,7 +1,3 @@
-"""
-Custom AES v2 — ECB mode (standard FIPS 197 AES-128).
-Block cipher logic is shared via custom_aes_core.
-"""
 from typing import List
 
 import numpy as np

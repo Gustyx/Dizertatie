@@ -1,8 +1,3 @@
-"""
-Custom AES v3 — CBC mode on top of the shared FIPS 197 AES-128 block cipher.
-Full 16-byte blocks: XOR with previous ciphertext block, then AES encrypt.
-Partial last block: XOR-only (no AES), so output length == input length.
-"""
 from typing import List
 
 import numpy as np

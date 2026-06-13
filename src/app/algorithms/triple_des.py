@@ -7,7 +7,6 @@ from cryptography.hazmat.primitives.ciphers import Cipher, modes
 def derive_des_key(key_phrase: str) -> bytes:
     """Derive a 24-byte TripleDES key from a passphrase (not secure for production)."""
 
-    # Use SHA-256 and take the first 24 bytes as the 3DES key
     return hashlib.sha256(key_phrase.encode("utf-8")).digest()[:24]
 
 
@@ -18,7 +17,6 @@ def des_ctr_transform(pixel_array: np.ndarray, key: bytes, nonce: bytes) -> np.n
 
     algo = decrepit_alg.TripleDES(key)
 
-    # Manual CTR using ECB: encrypt successive counter blocks and XOR with data
     block_size = algo.block_size // 8
     if len(nonce) != block_size:
         raise ValueError(
