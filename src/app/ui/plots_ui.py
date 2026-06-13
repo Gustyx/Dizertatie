@@ -33,11 +33,43 @@ def _resolve_related_paths(encrypted_path: Path) -> tuple[Path, Path]:
     return plain_path, plus_one_bit_path
 
 
-def _load_preview_image(path: Path, max_size: tuple[int, int]) -> ImageTk.PhotoImage:
-    with Image.open(path) as image:
-        preview = image.copy()
-        preview.thumbnail(max_size)
-    return ImageTk.PhotoImage(preview)
+def _open_image_viewer(image_path: Path, title: str, images: list[ImageTk.PhotoImage]) -> None:
+    """Open a standalone resizable window — image scales as you drag the corner."""
+    with Image.open(image_path) as _im:
+        source = _im.copy()
+
+    win = tk.Toplevel()
+    win.title(title)
+    orig_w, orig_h = source.size
+    win.geometry(f"{min(orig_w, 1400)}x{min(orig_h, 900)}")
+
+    label = ttk.Label(win)
+    label.pack(fill="both", expand=True)
+
+    _after_id: list[str] = []
+
+    def _on_resize(_event=None) -> None:
+        if _after_id:
+            try:
+                label.after_cancel(_after_id[0])
+            except Exception:
+                pass
+            _after_id.clear()
+        _after_id.append(label.after(60, _do_resize))
+
+    def _do_resize() -> None:
+        w = win.winfo_width()
+        h = win.winfo_height()
+        if w < 10 or h < 10:
+            return
+        resized = source.copy()
+        resized.thumbnail((w, h), Image.LANCZOS)
+        photo = ImageTk.PhotoImage(resized)
+        images.append(photo)
+        label.configure(image=photo)
+
+    win.bind("<Configure>", _on_resize)
+    win.after(50, _do_resize)
 
 
 def _add_image_panel(
@@ -48,14 +80,23 @@ def _add_image_panel(
     *,
     max_size: tuple[int, int] = (1100, 420),
 ) -> None:
-    container = ttk.LabelFrame(parent, text=title, padding=10)
-    container.pack(fill="both", expand=True, padx=6, pady=6)
+    with Image.open(image_path) as _im:
+        source = _im.copy()
 
-    photo = _load_preview_image(image_path, max_size=max_size)
+    init = source.copy()
+    init.thumbnail(max_size, Image.LANCZOS)
+    init_w, init_h = init.size
+
+    photo = ImageTk.PhotoImage(init)
     images.append(photo)
 
-    label = ttk.Label(container, image=photo)
-    label.pack(fill="both", expand=True)
+    container = ttk.LabelFrame(parent, text=title, padding=6)
+    container.pack(fill="x", padx=6, pady=6)
+
+    label = ttk.Label(container, image=photo, cursor="hand2")
+    label.pack(anchor="nw")
+
+    label.bind("<Button-1>", lambda _e: _open_image_viewer(image_path, title, images))
 
 
 def _build_scrollable_tab(parent: ttk.Notebook) -> tuple[ttk.Frame, ttk.Frame]:
@@ -91,7 +132,6 @@ def _build_scrollable_tab(parent: ttk.Notebook) -> tuple[ttk.Frame, ttk.Frame]:
     tab.bind("<Enter>", _bind_mousewheel)
     tab.bind("<Leave>", _unbind_mousewheel)
     content.bind("<Enter>", _bind_mousewheel)
-    # content.bind("<Leave>", _unbind_mousewheel)
     canvas.bind("<Enter>", _bind_mousewheel)
     canvas.bind("<Leave>", _unbind_mousewheel)
 
@@ -169,7 +209,7 @@ def open_plots_window(
 
     header = ttk.Label(
         root_frame,
-        text=f"Plots for {encrypted_image_path.name}",
+        text=f"Plots for {plain_path.name}",
         font=(None, 12, "bold"),
     )
     header.pack(anchor="w", pady=(0, 8))

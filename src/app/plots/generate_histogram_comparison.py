@@ -40,8 +40,6 @@ def render_histogram_all_algorithms(
     """1×(1+N) plot: one panel for plain image, one panel per encrypted algorithm."""
     plain = _load_rgb(plain_path)
 
-    print(encrypted_paths)
-
     enc_images: list[tuple[str, np.ndarray]] = []
     for alg, p in encrypted_paths.items():
         if p.exists():
