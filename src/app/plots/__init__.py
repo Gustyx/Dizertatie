@@ -1,4 +1,6 @@
-from .generate_correlation_plots import generate_correlation_plots
-from .generate_bitplane_plots import generate_bitplane_plots
-from .generate_histogram_plots import generate_histogram_plots
 from .plot_generation_helper import _collect_dataset_roots, _find_encrypted_directory, _find_plain_directories, _group_encrypted_files, _iter_image_files
+from .generate_bitplane_comparison import render_bitplane_bars_all_algorithms
+from .generate_histogram_comparison import render_histogram_all_algorithms
+from .generate_entropy_bars import render_entropy_bars
+from .generate_correlation_bars import render_correlation_bars
+from .generate_scatter_comparison import render_scatter_comparison
