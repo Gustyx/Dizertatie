@@ -4,3 +4,4 @@ from .generate_histogram_comparison import render_histogram_all_algorithms
 from .generate_entropy_bars import render_entropy_bars
 from .generate_correlation_bars import render_correlation_bars
 from .generate_scatter_comparison import render_scatter_comparison
+from .generate_speed_comaprison import render_speed_comparison

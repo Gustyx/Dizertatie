@@ -1,5 +1,5 @@
 """
-Shared AES-128 core used by custom_aes_v2 (ECB) and custom_aes_v3 (CBC).
+Shared AES-128 core used by custom_aes_v1 (ECB) and custom_aes_v2 (CBC).
 Provides: lookup tables, Numba-JIT block cipher, pure-Python fallback.
 """
 from typing import List

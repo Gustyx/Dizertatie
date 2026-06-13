@@ -124,7 +124,6 @@ def render_bitplane_bars_all_algorithms(
                    label="Encrypted")
             ax.set_xticks(bits)
             ax.set_xticklabels([str(b) for b in bits])
-            ax.set_xlabel("Bit plane")
             ax.set_ylabel("% set bits")
             ax.set_title(f"{alg_label} — {ch}")
             ax.grid(axis="y", alpha=0.18)

@@ -13,6 +13,7 @@ from ..plots import (
     render_entropy_bars,
     render_correlation_bars,
     render_scatter_comparison,
+    render_speed_comparison,
 )
 
 
@@ -160,6 +161,7 @@ def open_plots_window(
     encrypted_image_path: Path | None,
     parent: tk.Misc | None = None,
     all_encrypted_paths: dict[str, Path] | None = None,
+    encryption_times: dict[str, float] | None = None,
 ) -> tk.Toplevel | None:
     if encrypted_image_path is None:
         messagebox.showwarning("No image", "Please choose and encrypt an image first.")
@@ -218,11 +220,13 @@ def open_plots_window(
     histogram_tab, histogram_content = _build_scrollable_tab(notebook)
     bitplane_tab, bitplane_content = _build_scrollable_tab(notebook)
     entropy_tab, entropy_content = _build_scrollable_tab(notebook)
+    speed_tab, speed_content = _build_scrollable_tab(notebook)
 
     notebook.add(correlation_tab, text="Correlation")
     notebook.add(histogram_tab, text="Histogram")
     notebook.add(bitplane_tab, text="Bitplane")
     notebook.add(entropy_tab, text="Entropy")
+    notebook.add(speed_tab, text="Speed")
 
     plot_images: list[ImageTk.PhotoImage] = window._plot_images
 
@@ -281,5 +285,24 @@ def open_plots_window(
         plot_images,
         max_size=(1100, 400 * n_algs),
     )
+
+    if encryption_times:
+        speed_path = Path(temp_dir.name) / "speed_comparison.png"
+        render_speed_comparison(encryption_times, speed_path)
+        if speed_path.exists():
+            _add_image_panel(
+                speed_content,
+                "Encryption speed — all algorithms",
+                speed_path,
+                plot_images,
+                max_size=(1100, 520),
+            )
+    else:
+        ttk.Label(
+            speed_content,
+            text="No timing data available.\nEncrypt at least one image to see speed results.",
+            font=(None, 10),
+            justify="center",
+        ).pack(pady=40)
 
     return window

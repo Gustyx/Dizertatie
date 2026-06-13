@@ -512,6 +512,7 @@ def _on_view_plots(root: tk.Misc) -> None:
         path,
         parent=root,
         all_encrypted_paths=None,
+        encryption_times=dict(LAST_ENCRYPTION_TIMES),
     )
 
 

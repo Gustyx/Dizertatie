@@ -11,12 +11,10 @@ from ..algorithms import (
     aes_cbc_decrypt_bytes,
     chacha20_encrypt_bytes,
     chacha20_decrypt_bytes,
-    apply_custom_aes_decrypt,
-    apply_custom_aes_encrypt,
+    apply_custom_aes_v1_decrypt,
+    apply_custom_aes_v1_encrypt,
     apply_custom_aes_v2_decrypt,
     apply_custom_aes_v2_encrypt,
-    apply_custom_aes_v3_decrypt,
-    apply_custom_aes_v3_encrypt,
     apply_logistic_map_decrypt,
     apply_logistic_map_encrypt,
     apply_henon_map_decrypt,
@@ -260,13 +258,13 @@ def encrypt_image(
         case "CUSTOM_V1":
             key = (key_phrase or "").ljust(16)[:16]
             flat_pixels = pixels.flatten().tolist()
-            transformed_list = apply_custom_aes_v2_encrypt(flat_pixels, key)
+            transformed_list = apply_custom_aes_v1_encrypt(flat_pixels, key)
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(pixels.shape)
             nonce = b""
         case "CUSTOM_V2":
             key = (key_phrase or "").ljust(16)[:16]
             flat_pixels = pixels.flatten().tolist()
-            transformed_list = apply_custom_aes_v3_encrypt(flat_pixels, key)
+            transformed_list = apply_custom_aes_v2_encrypt(flat_pixels, key)
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(pixels.shape)
             nonce = b""
         case _:
@@ -371,13 +369,13 @@ def decrypt_image(
         case "CUSTOM_V1":
             key = (key_phrase or "").ljust(16)[:16]
             flat_pixels = pixels.flatten().tolist()
-            transformed_list = apply_custom_aes_v2_decrypt(flat_pixels, key)
+            transformed_list = apply_custom_aes_v1_decrypt(flat_pixels, key)
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(pixels.shape)
         case "CUSTOM_V2":
             key = (key_phrase or "").ljust(16)[:16]
             flat_pixels = pixels.flatten().tolist()
             original_length = len(flat_pixels)
-            transformed_list = apply_custom_aes_v3_decrypt(flat_pixels, key, original_length)
+            transformed_list = apply_custom_aes_v2_decrypt(flat_pixels, key, original_length)
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(pixels.shape)
 
         case _:
