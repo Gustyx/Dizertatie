@@ -7,6 +7,10 @@ from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
 
+from .styles import (
+    C_BG, C_BORDER, C_FG, C_FG_DIM, FONT_SMALL,
+    apply_plots_theme,
+)
 from ..plots import (
     render_bitplane_bars_all_algorithms,
     render_histogram_plot,
@@ -88,22 +92,28 @@ def _add_image_panel(
     photo = ImageTk.PhotoImage(init)
     images.append(photo)
 
-    container = ttk.LabelFrame(parent, text=title, padding=6)
+    container = tk.LabelFrame(
+        parent, text=title,
+        bg=C_BG, fg=C_FG_DIM,
+        font=FONT_SMALL, bd=1,
+        highlightbackground=C_BORDER, relief="flat",
+        padx=6, pady=6,
+    )
     container.pack(fill="x", padx=6, pady=6)
 
-    label = ttk.Label(container, image=photo, cursor="hand2")
+    label = tk.Label(container, image=photo, cursor="hand2", bg=C_BG)
     label.pack(anchor="nw")
 
     label.bind("<Button-1>", lambda _e: _open_image_viewer(image_path, title, images))
 
 
 def _build_scrollable_tab(parent: ttk.Notebook) -> tuple[ttk.Frame, ttk.Frame]:
-    tab = ttk.Frame(parent)
+    tab = ttk.Frame(parent, style="Plots.TFrame")
     tab.pack(fill="both", expand=True)
 
-    canvas = tk.Canvas(tab, highlightthickness=0, borderwidth=0)
+    canvas = tk.Canvas(tab, highlightthickness=0, borderwidth=0, bg=C_BG)
     scrollbar = ttk.Scrollbar(tab, orient="vertical", command=canvas.yview)
-    content = ttk.Frame(canvas)
+    content = ttk.Frame(canvas, style="Plots.TFrame")
 
     content_window = canvas.create_window((0, 0), window=content, anchor="nw")
 
@@ -157,6 +167,27 @@ def _find_all_encrypted_variants(encrypted_path: Path) -> dict[str, Path]:
     return result
 
 
+def _load_times_from_json(enc_paths: dict[str, Path]) -> dict[str, float]:
+    """Extract encryption times from saved analysis JSON files."""
+    import json, re
+    times: dict[str, float] = {}
+    for alg, enc_path in enc_paths.items():
+        json_path = enc_path.parent.parent / "analysis_results" / f"{enc_path.stem}_analysis.json"
+        if not json_path.exists():
+            continue
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+            for item in data:
+                if item.get("title") == "Encryption time":
+                    m = re.search(r"[\d.]+", item.get("body", ""))
+                    if m:
+                        times[alg] = float(m.group())
+                    break
+        except Exception:
+            pass
+    return times
+
+
 def open_plots_window(
     encrypted_image_path: Path | None,
     parent: tk.Misc | None = None,
@@ -176,6 +207,17 @@ def open_plots_window(
     if all_encrypted_paths is None:
         all_encrypted_paths = _find_all_encrypted_variants(encrypted_image_path)
 
+    # Merge times from JSON, deduplicating by lowercase key so "aes cbc" and
+    # "AES CBC" are treated as the same algorithm (live name/value wins).
+    json_times = _load_times_from_json(all_encrypted_paths)
+    live = encryption_times or {}
+    live_lower = {k.lower(): k for k in live}
+    merged_times: dict[str, float] = {}
+    for k, v in json_times.items():
+        canonical = live_lower.get(k.lower(), k)
+        merged_times[canonical] = v
+    merged_times.update(live)
+
     if parent is None:
         parent = tk._get_default_root()
     if parent is None:
@@ -186,6 +228,7 @@ def open_plots_window(
     window.title("Image plots")
     window.geometry("1200x900")
     window.minsize(900, 700)
+    window.configure(bg=C_BG)
 
     temp_dir = tempfile.TemporaryDirectory(prefix="image_plot_ui_")
     window._temp_dir = temp_dir
@@ -203,17 +246,19 @@ def open_plots_window(
 
     window.protocol("WM_DELETE_WINDOW", _cleanup)
 
-    root_frame = ttk.Frame(window, padding=12)
+    apply_plots_theme(window)
+
+    root_frame = tk.Frame(window, bg=C_BG, padx=12, pady=12)
     root_frame.pack(fill="both", expand=True)
 
-    header = ttk.Label(
+    tk.Label(
         root_frame,
         text=f"Plots for {plain_path.name}",
-        font=(None, 12, "bold"),
-    )
-    header.pack(anchor="w", pady=(0, 8))
+        font=("Segoe UI", 12, "bold"),
+        bg=C_BG, fg=C_FG,
+    ).pack(anchor="w", pady=(0, 8))
 
-    notebook = ttk.Notebook(root_frame)
+    notebook = ttk.Notebook(root_frame, style="Plots.TNotebook")
     notebook.pack(fill="both", expand=True)
 
     correlation_tab, correlation_content = _build_scrollable_tab(notebook)
@@ -286,9 +331,9 @@ def open_plots_window(
         max_size=(1100, 400 * n_algs),
     )
 
-    if encryption_times:
+    if merged_times:
         speed_path = Path(temp_dir.name) / "speed_comparison.png"
-        render_speed_plot(encryption_times, speed_path)
+        render_speed_plot(merged_times, speed_path)
         if speed_path.exists():
             _add_image_panel(
                 speed_content,
@@ -298,11 +343,12 @@ def open_plots_window(
                 max_size=(1100, 520),
             )
     else:
-        ttk.Label(
+        tk.Label(
             speed_content,
             text="No timing data available.\nEncrypt at least one image to see speed results.",
-            font=(None, 10),
+            font=FONT_SMALL,
             justify="center",
+            bg=C_BG, fg=C_FG_DIM,
         ).pack(pady=40)
 
     return window

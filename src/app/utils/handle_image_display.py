@@ -99,7 +99,7 @@ def reset_placeholder(canvas: tk.Canvas, text: str) -> None:
         padding,
         width - padding,
         height - padding,
-        outline="#666",
+        outline="#3a3d55",
         width=2,
         dash=(4, 4),
         tags=("placeholder",),
@@ -108,7 +108,7 @@ def reset_placeholder(canvas: tk.Canvas, text: str) -> None:
         width // 2,
         height // 2,
         text=text,
-        fill="#666",
+        fill="#5a5e7a",
         tags=("placeholder",),
     )
 
@@ -182,10 +182,10 @@ def build_image_box(
     extra_window_height: int = 180,
 ) -> tk.Canvas:
     img_box = tk.Canvas(
-        frame, bg="#ffffff", relief="flat", width=400, height=240, highlightthickness=0
+        frame, bg="#0d0f1a", relief="flat", width=400, height=240, highlightthickness=0
     )
     reset_placeholder(img_box, placeholder_text)
-    img_box.pack(pady=(0, 8), anchor="n")
+    img_box.pack(padx=12, pady=(12, 0), anchor="n")
 
     if DND_AVAILABLE:
         try:

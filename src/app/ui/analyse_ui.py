@@ -1,8 +1,13 @@
 from pathlib import Path
 import traceback
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 
+from .styles import (
+    C_SIDEBAR, C_BG, C_BORDER, C_FG, FONT_BOLD,
+    apply_main_theme, make_sidebar_button, make_toolbar_button,
+    set_filter_active, make_result_text,
+)
 from ..analysis_methods import (
     correlation_between_images,
     diagonal_pixel_correlation,
@@ -36,10 +41,7 @@ LAST_ANALYSIS_SECTIONS: list[tuple[str, str, str]] = []
 
 def _set_category_button_state(active_name: str) -> None:
     for name, button in RESULT_CATEGORY_BUTTONS.items():
-        if name == active_name:
-            button.config(relief="sunken", bg="#cfe")
-        else:
-            button.config(relief="raised", bg=button.master.cget("bg"))
+        set_filter_active(button, name == active_name)
 
 
 def _render_result_sections() -> None:
@@ -479,21 +481,17 @@ def build_analysis_menu(parent) -> None:
     global analysis_selection, analysis_buttons
     analysis_selection = tk.StringVar(value=ANALYSIS_DEFAULT)
 
-    tk.Label(parent, text="Analysis", font=(None, 10, "bold")).pack(pady=(0, 6))
+    tk.Label(parent, text="Analysis", font=FONT_BOLD,
+             bg=C_SIDEBAR, fg=C_FG).pack(pady=(12, 6), padx=10, anchor="w")
 
     def make_btn(display_name: str) -> None:
-        btn = tk.Button(parent, text=display_name, width=14)
-
         def on_click() -> None:
             analysis_selection.set(display_name)
             for name, button in analysis_buttons.items():
-                if name == display_name:
-                    button.config(relief="sunken", bg="#cfe")
-                else:
-                    button.config(relief="raised", bg=parent.cget("bg"))
+                set_filter_active(button, name == display_name)
 
-        btn.config(command=on_click)
-        btn.pack(pady=4, fill="x")
+        btn = make_sidebar_button(parent, display_name, command=on_click)
+        btn.pack(fill="x")
         analysis_buttons[display_name] = btn
 
     make_btn("NPCR")
@@ -506,27 +504,27 @@ def build_analysis_menu(parent) -> None:
     make_btn("Histogram")
 
     analysis_selection.set(ANALYSIS_DEFAULT)
-    analysis_buttons[ANALYSIS_DEFAULT].config(relief="sunken", bg="#cfe")
+    set_filter_active(analysis_buttons[ANALYSIS_DEFAULT], True)
 
 
 def build_result_category_menu(parent) -> None:
     global RESULT_CATEGORY_SELECTION, RESULT_CATEGORY_BUTTONS
     RESULT_CATEGORY_SELECTION = tk.StringVar(value=RESULT_CATEGORY_DEFAULT)
 
-    ui_state.result_category_frame = tk.Frame(parent)
+    ui_state.result_category_frame = tk.Frame(parent, bg=C_SIDEBAR)
 
+    tk.Frame(ui_state.result_category_frame, bg=C_BORDER, height=1).pack(fill="x")
     tk.Label(
-        ui_state.result_category_frame, text="Results", font=(None, 10, "bold")
-    ).pack(pady=(0, 6))
+        ui_state.result_category_frame, text="Results", font=FONT_BOLD,
+        bg=C_SIDEBAR, fg=C_FG,
+    ).pack(pady=(10, 6), padx=10, anchor="w")
 
     def make_btn(display_name: str) -> None:
-        btn = tk.Button(ui_state.result_category_frame, text=display_name, width=12)
-
-        def on_click() -> None:
-            _set_result_category(display_name)
-
-        btn.config(command=on_click)
-        btn.pack(pady=4, fill="x")
+        btn = make_sidebar_button(
+            ui_state.result_category_frame, display_name,
+            command=lambda n=display_name: _set_result_category(n),
+        )
+        btn.pack(fill="x")
         RESULT_CATEGORY_BUTTONS[display_name] = btn
 
     make_btn("All")
@@ -545,18 +543,30 @@ def build_analyse_ui() -> None:
         root = tk.Tk()
 
     root.title("Image Analysis")
-    root.minsize(320, 240)
+    root.minsize(800, 500)
+    root.configure(bg=C_SIDEBAR)
+    apply_main_theme(root)
 
-    frame = tk.Frame(root, padx=10, pady=10)
-    frame.pack(expand=True, fill="both")
+    outer = tk.Frame(root, bg=C_SIDEBAR)
+    outer.pack(fill="both", expand=True)
 
-    sidebar = tk.Frame(frame)
-    sidebar.pack(side="left", fill="y", padx=(0, 8))
+    # ── Sidebar ──────────────────────────────────────────────────────────────
+    sidebar = tk.Frame(outer, bg=C_SIDEBAR, width=160)
+    sidebar.pack(side="left", fill="y")
+    sidebar.pack_propagate(False)
+
     build_analysis_menu(sidebar)
-    tk.Frame(sidebar).pack(fill="both", expand=True)
+    tk.Frame(sidebar, bg=C_SIDEBAR).pack(fill="both", expand=True)
     build_result_category_menu(sidebar)
 
-    content = tk.Frame(frame)
+    tk.Frame(sidebar, bg=C_BORDER, height=1).pack(side="bottom", fill="x")
+    make_sidebar_button(
+        sidebar, "Encryption",
+        command=lambda: _switch_to_encrypt(root),
+    ).pack(side="bottom", fill="x")
+
+    # ── Main content ─────────────────────────────────────────────────────────
+    content = tk.Frame(outer, bg="#0d0f1a")
     content.pack(side="left", fill="both", expand=True)
 
     img_box = build_image_box(
@@ -566,60 +576,56 @@ def build_analyse_ui() -> None:
         extra_window_height=180,
     )
 
-    controls = tk.Frame(content)
-    controls.pack()
+    # ── Toolbar ──────────────────────────────────────────────────────────────
+    toolbar = tk.Frame(content, bg=C_BG, pady=8)
+    toolbar.pack(fill="x")
+    btn_inner = tk.Frame(toolbar, bg=C_BG)
+    btn_inner.pack(anchor="center")
 
     base_dir = Path(__file__).resolve().parent
     encrypted_dir = base_dir / "images" / "encrypted"
 
-    choose_btn = tk.Button(
-        controls,
-        text="Choose encrypted image",
+    make_toolbar_button(
+        btn_inner, "Choose encrypted image",
         command=lambda: choose_image(
-            img_box,
-            ui_state,
+            img_box, ui_state,
             title="Select encrypted image",
             initialdir=str(encrypted_dir) if encrypted_dir.exists() else None,
             extra_window_height=180,
         ),
-    )
-    choose_btn.pack()
+    ).pack(side="left", padx=4)
 
-    ui_state.action_buttons_frame = tk.Frame(controls)
+    ui_state.action_buttons_frame = tk.Frame(btn_inner, bg=C_BG)
 
-    analyse_btn = tk.Button(
-        ui_state.action_buttons_frame, text="Analyse", width=12, command=on_analyse
-    )
-    analyse_btn.pack(pady=(6, 0))
+    make_toolbar_button(
+        ui_state.action_buttons_frame, "Analyse", command=on_analyse
+    ).pack(side="left", padx=4)
+    make_toolbar_button(
+        ui_state.action_buttons_frame, "Complete Analysis", command=on_complete_analysis
+    ).pack(side="left", padx=4)
 
-    complete_btn = tk.Button(
-        ui_state.action_buttons_frame,
-        text="Complete Analysis",
-        width=16,
-        command=on_complete_analysis,
-    )
-    complete_btn.pack(pady=(6, 0))
+    # ── Results area ─────────────────────────────────────────────────────────
+    results_wrap = tk.Frame(content, bg=C_BG)
+    results_wrap.pack(fill="both", expand=True)
 
-    ui_state.result_frame = tk.LabelFrame(content, text="Results")
+    results_header = tk.Frame(results_wrap, bg=C_BG)
+    results_header.pack(fill="x", padx=12, pady=(10, 0))
+    tk.Label(results_header, text="Results", font=FONT_BOLD,
+             bg=C_BG, fg=C_FG).pack(side="left")
+    tk.Frame(results_wrap, bg=C_BORDER, height=1).pack(fill="x", padx=12, pady=(4, 0))
 
-    result_container = tk.Frame(ui_state.result_frame)
-    result_container.pack(fill="both", expand=True)
+    ui_state.result_frame = tk.Frame(results_wrap, bg=C_BG)
 
-    result_scrollbar = tk.Scrollbar(result_container, orient="vertical")
+    result_container = tk.Frame(ui_state.result_frame, bg=C_BG)
+    result_container.pack(fill="both", expand=True, padx=12, pady=8)
+
+    result_scrollbar = ttk.Scrollbar(result_container, orient="vertical")
     result_scrollbar.pack(side="right", fill="y")
 
-    ui_state.result_widget = tk.Text(
-        result_container,
-        wrap="word",
-        height=14,
-        padx=8,
-        pady=8,
-        yscrollcommand=result_scrollbar.set,
-        relief="flat",
-        borderwidth=0,
-    )
+    ui_state.result_widget = make_result_text(result_container, result_scrollbar)
     ui_state.result_widget.pack(side="left", fill="both", expand=True)
     result_scrollbar.config(command=ui_state.result_widget.yview)
+    ui_state.result_widget.config(state="normal")
     ui_state.result_widget.insert(
         "1.0",
         "Choose an encrypted image, then run NPCR, UACI, Correlation, MSE, PSNR, Entropy, Histogram, or Complete Analysis.",
@@ -627,32 +633,22 @@ def build_analyse_ui() -> None:
     ui_state.result_widget.config(state="disabled")
 
     ui_state.result_category_frame.pack_forget()
-
-    # Hide analysis controls until an image is selected.
     ui_state.action_buttons_frame.pack_forget()
     ui_state.result_frame.pack_forget()
 
-    # Mode switch button to open encryption UI
-    def switch_to_encrypt():
-        try:
-            root.destroy()
-        except Exception:
-            pass
-        try:
-            from .encrypt_ui import build_encrypt_ui
-
-            build_encrypt_ui()
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to open Encrypt UI:\n{e}")
-
-    bottom = tk.Frame(frame)
-    bottom.pack(side="bottom", fill="x", pady=(8, 0))
-    switch_btn = tk.Button(
-        bottom, text="Encryption", width=12, command=switch_to_encrypt
-    )
-    switch_btn.pack()
-
     root.mainloop()
+
+
+def _switch_to_encrypt(root: tk.Tk) -> None:
+    try:
+        root.destroy()
+    except Exception:
+        pass
+    try:
+        from .encrypt_ui import build_encrypt_ui
+        build_encrypt_ui()
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to open Encrypt UI:\n{e}")
 
 
 def main() -> None:

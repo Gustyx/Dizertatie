@@ -7,6 +7,14 @@ import traceback
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from .styles import (
+    C_SIDEBAR, C_SIDEBAR_ITEM, C_ACCENT, C_BTN_FG_OFF,
+    C_BG, C_BORDER, C_FG, C_FG_DIM, C_FG_PLACEHOLDER,
+    FONT_UI, FONT_BOLD, FONT_SMALL,
+    apply_main_theme, make_sidebar_button, make_toolbar_button,
+    make_filter_button, set_filter_active, make_result_text,
+)
+
 from ..utils import (
     ImageUiState,
     build_image_box,
@@ -43,6 +51,7 @@ try:
 except Exception:
     TkinterDnD = None
 
+ENABLE_ANALYSE_UI = False
 
 KEY_PHRASE = "encryptionkey"
 ALL_ALGORITHMS = [
@@ -50,9 +59,10 @@ ALL_ALGORITHMS = [
     "Logistic_Map", "Henon_Map", "Custom_v1", "Custom_v2",
 ]
 
+
 ui_state = ImageUiState()
 
-SELECTED_ALGORITHMS: set[str] = {"AES_CTR"}
+SELECTED_ALGORITHMS: set[str] = {}
 ALGORITHM_BUTTONS: dict[str, tk.Button] = {}
 
 LAST_ENCRYPTED_PATHS: dict[str, Path] = {}
@@ -78,28 +88,39 @@ def _toggle_algorithm(name: str) -> None:
 def _refresh_algorithm_buttons() -> None:
     for name, btn in ALGORITHM_BUTTONS.items():
         if name in SELECTED_ALGORITHMS:
-            btn.config(relief="sunken", bg="#cfe")
+            btn.config(bg=C_ACCENT, fg="white", relief="flat")
         else:
-            try:
-                btn.config(relief="raised", bg=btn.master.cget("bg"))
-            except Exception:
-                btn.config(relief="raised")
+            btn.config(bg=C_SIDEBAR_ITEM, fg=C_BTN_FG_OFF, relief="flat")
 
 
 def build_algorithm_menu(parent: tk.Widget) -> None:
     global ALGORITHM_BUTTONS
     ALGORITHM_BUTTONS = {}
 
-    tk.Label(parent, text="Algorithms", font=(None, 10, "bold")).pack(pady=(0, 2))
+    header = tk.Frame(parent, bg=C_SIDEBAR)
+    header.pack(fill="x", padx=0, pady=0)
+    tk.Label(
+        header, text="ALGORITHMS", bg=C_SIDEBAR, fg=C_FG_DIM,
+        font=("Segoe UI", 8, "bold"),
+    ).pack(anchor="w", padx=14, pady=(16, 8))
+
+    btn_frame = tk.Frame(parent, bg=C_SIDEBAR)
+    btn_frame.pack(fill="x", padx=8)
 
     for name in ALL_ALGORITHMS:
         btn = tk.Button(
-            parent,
+            btn_frame,
             text=name.replace("_", " "),
-            width=12,
+            anchor="w",
+            relief="flat",
+            bd=0,
+            padx=10,
+            pady=6,
+            font=FONT_SMALL,
+            cursor="hand2",
             command=lambda n=name: _toggle_algorithm(n),
         )
-        btn.pack(pady=4, fill="x")
+        btn.pack(fill="x", pady=2)
         ALGORITHM_BUTTONS[name] = btn
 
     _refresh_algorithm_buttons()
@@ -166,24 +187,16 @@ def _build_result_tab(
     tab = ttk.Frame(notebook)
     notebook.add(tab, text=alg.replace("_", "-"))
 
-    btn_row = tk.Frame(tab)
-    btn_row.pack(fill="x", padx=4, pady=(4, 2))
+    btn_row = tk.Frame(tab, bg=C_BG)
+    btn_row.pack(fill="x", padx=8, pady=(6, 4))
 
     cat_buttons: dict[str, tk.Button] = {}
 
-    text_frame = tk.Frame(tab)
-    text_frame.pack(fill="both", expand=True)
+    text_frame = tk.Frame(tab, bg=C_BG, bd=0)
+    text_frame.pack(fill="both", expand=True, padx=8, pady=(0, 8))
     scrollbar = ttk.Scrollbar(text_frame, orient="vertical")
     scrollbar.pack(side="right", fill="y")
-    result_text = tk.Text(
-        text_frame,
-        wrap="word",
-        padx=8,
-        pady=8,
-        relief="flat",
-        borderwidth=0,
-        yscrollcommand=scrollbar.set,
-    )
+    result_text = make_result_text(text_frame, scrollbar)
     result_text.pack(side="left", fill="both", expand=True)
     scrollbar.config(command=result_text.yview)
 
@@ -191,12 +204,7 @@ def _build_result_tab(
         global _active_category
         _active_category = cat
         for name, btn in cat_buttons.items():
-            try:
-                default_bg = btn.master.cget("bg")
-            except Exception:
-                default_bg = "SystemButtonFace"
-            btn.config(relief="sunken" if name == cat else "raised",
-                       bg="#cfe" if name == cat else default_bg)
+            set_filter_active(btn, name == cat)
 
         visible = sections if cat == "All" else [s for s in sections if s[0] == cat]
         text = (
@@ -208,11 +216,10 @@ def _build_result_tab(
         result_text.insert("1.0", text)
         result_text.config(state="disabled")
 
-    # Expose render so the tab-switch callback can re-apply the active category
     tab._render = _render  # type: ignore[attr-defined]
 
     for cat in ("All", "Encrypted", "Encrypted vs Plain", "Encrypted vs Encrypted"):
-        btn = tk.Button(btn_row, text=cat, padx=6, command=lambda c=cat: _render(c))
+        btn = make_filter_button(btn_row, cat, command=lambda c=cat: _render(c))
         btn.pack(side="left", padx=2)
         cat_buttons[cat] = btn
 
@@ -232,7 +239,7 @@ def _rebuild_result_notebook() -> None:
         return
 
     nb = ttk.Notebook(_result_notebook_frame)
-    nb.pack(fill="both", expand=True)
+    nb.pack(fill="both", expand=True, padx=0, pady=0)
     _result_notebook = nb
 
     for alg, sections in LAST_ANALYSIS_DATA.items():
@@ -521,18 +528,27 @@ def build_encrypt_ui() -> None:
 
     root = TkinterDnD.Tk() if TkinterDnD is not None else tk.Tk()
     root.title("Image Encryptor")
-    root.minsize(320, 240)
+    root.minsize(780, 540)
+    root.configure(bg=C_SIDEBAR)
+    apply_main_theme(root)
 
-    frame = tk.Frame(root, padx=10, pady=10)
-    frame.pack(expand=True, fill="both")
+    outer = tk.Frame(root, bg=C_SIDEBAR)
+    outer.pack(fill="both", expand=True)
 
-    # Left sidebar — algorithm selection
-    sidebar = tk.Frame(frame)
-    sidebar.pack(side="left", fill="y", padx=(0, 8))
+    # ── Sidebar ──────────────────────────────────────────────────────────────
+    sidebar = tk.Frame(outer, bg=C_SIDEBAR, width=148)
+    sidebar.pack(side="left", fill="y")
+    sidebar.pack_propagate(False)
     build_algorithm_menu(sidebar)
 
-    # Main content
-    content = tk.Frame(frame)
+    if (ENABLE_ANALYSE_UI):
+        tk.Frame(sidebar, bg=C_BORDER, height=1).pack(side="bottom", fill="x")
+        make_sidebar_button(
+            sidebar, "Analyse", command=lambda: _try_switch(root, build_analyse_ui)
+        ).pack(side="bottom", fill="x")
+
+    # ── Main content ─────────────────────────────────────────────────────────
+    content = tk.Frame(outer, bg="#0d0f1a")
     content.pack(side="left", fill="both", expand=True)
 
     global _img_box
@@ -543,48 +559,43 @@ def build_encrypt_ui() -> None:
     )
     _img_box = img_box
 
-    # Action buttons
-    controls = tk.Frame(content)
-    controls.pack(pady=4)
+    # ── Toolbar ──────────────────────────────────────────────────────────────
+    toolbar = tk.Frame(content, bg=C_BG, pady=8)
+    toolbar.pack(fill="x")
+    btn_inner = tk.Frame(toolbar, bg=C_BG)
+    btn_inner.pack(anchor="center")
 
-    tk.Button(
-        controls, text="Choose image", width=14,
-        command=lambda: _choose_and_auto_load(img_box),
-    ).pack(pady=(0, 4))
+    make_toolbar_button(btn_inner, "Choose image",
+        command=lambda: _choose_and_auto_load(img_box)).pack(side="left", padx=4)
+    make_toolbar_button(btn_inner, "Encrypt",
+        command=lambda: on_encrypt(img_box)).pack(side="left", padx=4)
+    make_toolbar_button(btn_inner, "Encrypt + Analysis",
+        command=lambda: on_encrypt_and_analysis(img_box)).pack(side="left", padx=4)
+    make_toolbar_button(btn_inner, "Decrypt",
+        command=lambda: on_decrypt(img_box)).pack(side="left", padx=4)
+    make_toolbar_button(btn_inner, "View plots",
+        command=lambda: _on_view_plots(root)).pack(side="left", padx=4)
 
-    btn_row = tk.Frame(controls)
-    btn_row.pack()
-    tk.Button(btn_row, text="Encrypt", width=12,
-              command=lambda: on_encrypt(img_box)).pack(side="left", padx=4)
-    tk.Button(btn_row, text="Encrypt + Analysis", width=18,
-              command=lambda: on_encrypt_and_analysis(img_box)).pack(side="left", padx=4)
-    tk.Button(btn_row, text="Decrypt", width=12,
-              command=lambda: on_decrypt(img_box)).pack(side="left", padx=4)
-    tk.Button(btn_row, text="View plots", width=12,
-              command=lambda: _on_view_plots(root)).pack(side="left", padx=4)
+    # ── Results area ─────────────────────────────────────────────────────────
+    results_wrap = tk.Frame(content, bg=C_BG)
+    results_wrap.pack(fill="both", expand=True)
 
-    # Result area
-    result_lf = tk.LabelFrame(content, text="Results")
-    result_lf.pack(fill="both", expand=True, pady=(6, 0))
+    results_header = tk.Frame(results_wrap, bg=C_BG)
+    results_header.pack(fill="x", padx=12, pady=(10, 0))
+    tk.Label(results_header, text="Results", font=FONT_BOLD,
+             bg=C_BG, fg=C_FG).pack(side="left")
+    tk.Frame(results_wrap, bg=C_BORDER, height=1).pack(fill="x", padx=12, pady=(4, 0))
 
-    _result_notebook_frame = tk.Frame(result_lf)
+    _result_notebook_frame = tk.Frame(results_wrap, bg=C_BG)
     _result_notebook_frame.pack(fill="both", expand=True)
 
     placeholder = tk.Label(
         _result_notebook_frame,
         text="Run Encrypt + Analysis to see results per algorithm.",
-        fg="gray",
+        fg=C_FG_PLACEHOLDER, bg=C_BG, font=FONT_UI,
     )
     placeholder.pack(expand=True)
-
     _result_notebook_frame._placeholder = placeholder
-
-    bottom = tk.Frame(frame)
-    bottom.pack(side="bottom", fill="x", pady=(8, 0))
-    tk.Button(
-        bottom, text="Analyse", width=12,
-        command=lambda: (_try_switch(root, build_analyse_ui)),
-    ).pack()
 
     root.mainloop()
 
