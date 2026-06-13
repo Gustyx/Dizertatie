@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 import traceback
 import tkinter as tk
@@ -56,6 +57,7 @@ ALGORITHM_BUTTONS: dict[str, tk.Button] = {}
 
 LAST_ENCRYPTED_PATHS: dict[str, Path] = {}
 LAST_ANALYSIS_DATA: dict[str, list[tuple[str, str, str]]] = {}
+LAST_ENCRYPTION_TIMES: dict[str, float] = {}
 
 _result_notebook: ttk.Notebook | None = None
 _result_notebook_frame: tk.Frame | None = None
@@ -355,13 +357,17 @@ def on_encrypt(canvas: tk.Canvas) -> dict[str, Path]:
     results: dict[str, Path] = {}
     errors: list[str] = []
 
+    LAST_ENCRYPTION_TIMES.clear()
+
     for alg in sorted(SELECTED_ALGORITHMS):
         try:
             encrypted_dir = input_path.parent.parent / "encrypted"
             encrypted_dir.mkdir(parents=True, exist_ok=True)
             prefix = alg.lower()
             output_path = encrypted_dir / f"{prefix}_enc_{input_path.name}"
+            t0 = time.perf_counter()
             encrypt_image(input_path, output_path, KEY_PHRASE, algorithm=alg)
+            LAST_ENCRYPTION_TIMES[alg] = time.perf_counter() - t0
 
             plus_one_dir = input_path.parent.parent / "encrypted_plus_one_bit"
             plus_one_dir.mkdir(parents=True, exist_ok=True)
@@ -399,6 +405,10 @@ def on_complete_analysis(paths: dict[str, Path] | None = None) -> None:
     for alg, enc_path in paths.items():
         try:
             sections = _run_analysis(enc_path)
+            enc_time = LAST_ENCRYPTION_TIMES.get(alg)
+            if enc_time is not None:
+                time_body = f"Seconds: {enc_time:.3f} s"
+                sections = [_make_section("Encrypted", "Encryption time", time_body)] + sections
             LAST_ANALYSIS_DATA[alg] = sections
             try:
                 _save_analysis_json(enc_path, sections)
