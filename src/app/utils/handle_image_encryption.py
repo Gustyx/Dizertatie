@@ -257,18 +257,17 @@ def encrypt_image(
                 pixels.shape
             )
             nonce = b""
-        case "CUSTOM_AES":
-            # Use the provided key phrase (padded/truncated to 16 chars) for the custom AES
+        case "CUSTOM_V1":
             key = (key_phrase or "").ljust(16)[:16]
-
-            # Convert numpy pixel array to a flat list[int] as expected by custom AES
             flat_pixels = pixels.flatten().tolist()
             transformed_list = apply_custom_aes_v2_encrypt(flat_pixels, key)
-            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
-                pixels.shape
-            )
-
-            # Custom AES does not use a nonce in this implementation; write an empty nonce
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(pixels.shape)
+            nonce = b""
+        case "CUSTOM_V2":
+            key = (key_phrase or "").ljust(16)[:16]
+            flat_pixels = pixels.flatten().tolist()
+            transformed_list = apply_custom_aes_v3_encrypt(flat_pixels, key)
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(pixels.shape)
             nonce = b""
         case _:
             raise ValueError(f"Unsupported algorithm: {algorithm}")
@@ -369,19 +368,17 @@ def decrypt_image(
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(
                 pixels.shape
             )
-        case "CUSTOM_AES":
-            # Use the provided key phrase (padded/truncated to 16 chars) for the custom AES
+        case "CUSTOM_V1":
             key = (key_phrase or "").ljust(16)[:16]
-
-            # Convert numpy pixel array to a flat list[int] as expected by custom AES
             flat_pixels = pixels.flatten().tolist()
-
             transformed_list = apply_custom_aes_v2_decrypt(flat_pixels, key)
-
-            # Convert back to a numpy array with original shape and dtype for reconstruction
-            transformed = np.array(transformed_list, dtype=np.uint8).reshape(
-                pixels.shape
-            )
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(pixels.shape)
+        case "CUSTOM_V2":
+            key = (key_phrase or "").ljust(16)[:16]
+            flat_pixels = pixels.flatten().tolist()
+            original_length = len(flat_pixels)
+            transformed_list = apply_custom_aes_v3_decrypt(flat_pixels, key, original_length)
+            transformed = np.array(transformed_list, dtype=np.uint8).reshape(pixels.shape)
 
         case _:
             raise ValueError(f"Unsupported algorithm: {algorithm}")

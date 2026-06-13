@@ -1,7 +1,14 @@
-from datetime import datetime
 from typing import List
 
 import numpy as np
+
+try:
+    from numba import njit
+    _NUMBA = True
+except ImportError:
+    _NUMBA = False
+    def njit(fn=None, **kw):
+        return (lambda f: f)(fn) if fn else (lambda f: f)
 
 
 s_box = [
@@ -69,6 +76,172 @@ round_constants = [
     [0x36,0x00,0x00,0x00],
 ]
 
+
+# ---------------------------------------------------------------------------
+# Flat NumPy arrays for Numba (1-D uint8, no Python lists)
+# ---------------------------------------------------------------------------
+
+_S_BOX_FLAT     = np.array([v for row in s_box        for v in row], dtype=np.uint8)
+_INV_S_BOX_FLAT = np.array([v for row in inv_s_box    for v in row], dtype=np.uint8)
+_FIXED_FLAT     = np.array([v for row in fixed_matrix     for v in row], dtype=np.uint8)
+_INV_FIXED_FLAT = np.array([v for row in inv_fixed_matrix for v in row], dtype=np.uint8)
+_RCON_FLAT      = np.array([row[0] for row in round_constants], dtype=np.uint8)
+
+# ---------------------------------------------------------------------------
+# Numba JIT core
+# ---------------------------------------------------------------------------
+
+@njit
+def _gmul(a, b):
+    p = np.uint8(0)
+    a = np.uint8(a); b = np.uint8(b)
+    for _ in range(8):
+        if b & np.uint8(1):
+            p ^= a
+        hi = a & np.uint8(0x80)
+        a = np.uint8((a << np.uint8(1)) & np.uint8(0xFF))
+        if hi:
+            a ^= np.uint8(0x1B)
+        b >>= np.uint8(1)
+    return p
+
+
+@njit
+def _key_schedule(key):
+    W = np.zeros((44, 4), dtype=np.uint8)
+    for i in range(4):
+        for b in range(4):
+            W[i, b] = key[i * 4 + b]
+    for i in range(4, 44):
+        temp = W[i - 1].copy()
+        if i % 4 == 0:
+            t = temp[0]; temp[0] = temp[1]; temp[1] = temp[2]; temp[2] = temp[3]; temp[3] = t
+            for b in range(4):
+                temp[b] = _S_BOX_FLAT[temp[b]]
+            temp[0] ^= _RCON_FLAT[i // 4 - 1]
+        for b in range(4):
+            W[i, b] = W[i - 4, b] ^ temp[b]
+    return W
+
+
+@njit
+def _add_round_key(state, W, rnd):
+    out = state.copy()
+    base = rnd * 4
+    for col in range(4):
+        for row in range(4):
+            out[row, col] ^= W[base + col, row]
+    return out
+
+
+@njit
+def _aes_encrypt_block(block, W):
+    state = np.zeros((4, 4), dtype=np.uint8)
+    for col in range(4):
+        for row in range(4):
+            state[row, col] = block[col * 4 + row]
+    state = _add_round_key(state, W, 0)
+    for rnd in range(1, 10):
+        new_state = np.zeros((4, 4), dtype=np.uint8)
+        for i in range(4):
+            for j in range(4):
+                new_state[i, (j - i) % 4] = _S_BOX_FLAT[state[i, j]]
+        state = new_state
+        mixed = np.zeros((4, 4), dtype=np.uint8)
+        for i in range(4):
+            for j in range(4):
+                mixed[i, j] = (
+                    _gmul(_FIXED_FLAT[i * 4 + 0], state[0, j]) ^
+                    _gmul(_FIXED_FLAT[i * 4 + 1], state[1, j]) ^
+                    _gmul(_FIXED_FLAT[i * 4 + 2], state[2, j]) ^
+                    _gmul(_FIXED_FLAT[i * 4 + 3], state[3, j]) ^
+                    W[rnd * 4 + j, i]
+                )
+        state = mixed
+    new_state = np.zeros((4, 4), dtype=np.uint8)
+    for i in range(4):
+        for j in range(4):
+            new_state[i, (j - i) % 4] = _S_BOX_FLAT[state[i, j]]
+    state = _add_round_key(new_state, W, 10)
+    out = np.empty(16, dtype=np.uint8)
+    for col in range(4):
+        for row in range(4):
+            out[col * 4 + row] = state[row, col]
+    return out
+
+
+@njit
+def _aes_decrypt_block(block, W):
+    state = np.zeros((4, 4), dtype=np.uint8)
+    for col in range(4):
+        for row in range(4):
+            state[row, col] = block[col * 4 + row]
+    state = _add_round_key(state, W, 10)
+    for rnd in range(9, 0, -1):
+        new_state = np.zeros((4, 4), dtype=np.uint8)
+        for i in range(4):
+            for j in range(4):
+                new_state[i, (j + i) % 4] = _INV_S_BOX_FLAT[state[i, j]]
+        state = new_state
+        mixed = np.zeros((4, 4), dtype=np.uint8)
+        for i in range(4):
+            for j in range(4):
+                mixed[i, j] = (
+                    _gmul(_INV_FIXED_FLAT[i * 4 + 0], state[0, j] ^ W[rnd * 4 + j, 0]) ^
+                    _gmul(_INV_FIXED_FLAT[i * 4 + 1], state[1, j] ^ W[rnd * 4 + j, 1]) ^
+                    _gmul(_INV_FIXED_FLAT[i * 4 + 2], state[2, j] ^ W[rnd * 4 + j, 2]) ^
+                    _gmul(_INV_FIXED_FLAT[i * 4 + 3], state[3, j] ^ W[rnd * 4 + j, 3])
+                )
+        state = mixed
+    new_state = np.zeros((4, 4), dtype=np.uint8)
+    for i in range(4):
+        for j in range(4):
+            new_state[i, (j + i) % 4] = _INV_S_BOX_FLAT[state[i, j]]
+    state = _add_round_key(new_state, W, 0)
+    out = np.empty(16, dtype=np.uint8)
+    for col in range(4):
+        for row in range(4):
+            out[col * 4 + row] = state[row, col]
+    return out
+
+
+@njit
+def _process_blocks_cbc(data, W, encrypt):
+    n = len(data)
+    out = np.zeros(n, dtype=np.uint8)
+    prev = np.zeros(16, dtype=np.uint8)
+    start = 0
+    while start < n:
+        remaining = n - start
+        if remaining >= 16:
+            if encrypt:
+                block = np.zeros(16, dtype=np.uint8)
+                for k in range(16):
+                    block[k] = data[start + k] ^ prev[k]
+                result = _aes_encrypt_block(block, W)
+                for k in range(16):
+                    out[start + k] = result[k]
+                    prev[k] = result[k]
+            else:
+                enc_block = np.zeros(16, dtype=np.uint8)
+                for k in range(16):
+                    enc_block[k] = data[start + k]
+                result = _aes_decrypt_block(enc_block, W)
+                for k in range(16):
+                    out[start + k] = result[k] ^ prev[k]
+                for k in range(16):
+                    prev[k] = enc_block[k]
+        else:
+            r = remaining
+            for k in range(r):
+                out[start + k] = data[start + k] ^ prev[k]
+        start += 16
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Pure-Python fallback helpers
+# ---------------------------------------------------------------------------
 
 def galois_multiplication(a: int, b: int) -> int:
     p = 0
@@ -281,66 +454,67 @@ def aes_decrypt(block: List[int], round_keys):
 
 def encrypt_pixels(pixels: List[int], round_keys) -> List[int]:
     encrypted_pixels = []
-    pixel_block = []
+    prev_enc_block = [0] * 16
 
-    for start in range(0, len(pixels), 15):
-        pixel_block = pixels[start:start + 16]
-
-        if len(pixel_block) < 16 or start + 16 == len(pixels):
-            encrypted_pixels.extend(pixel_block)
-            encrypted_pixels[-1] = len(pixel_block)
-            #print(encrypted_pixels[-1])
+    for start in range(0, len(pixels), 16):
+        plain_chunk = pixels[start:start + 16]
+        if len(plain_chunk) == 16:
+            block = [plain_chunk[i] ^ prev_enc_block[i] for i in range(16)]
+            encrypted_block = aes_encrypt(block, round_keys)
+            encrypted_pixels.extend(encrypted_block)
+            prev_enc_block = encrypted_block
         else:
-            #print("Encrypting block:", pixel_block)
-            encrypted_block = aes_encrypt(pixel_block, round_keys)
-            #print("Encrypted block:", encrypted_block)
-            encrypted_pixels.extend(encrypted_block[: len(pixels[start:start + 16])])
+            # Last partial block: XOR with previous encrypted block, no AES (output same size as input)
+            r = len(plain_chunk)
+            encrypted_pixels.extend(plain_chunk[i] ^ prev_enc_block[i] for i in range(r))
 
     return encrypted_pixels
 
 
-def decrypt_pixels(pixels: List[int], round_keys) -> List[int]:
+def decrypt_pixels(pixels: List[int], round_keys, original_length: int) -> List[int]:
     decrypted_pixels = []
-    pixel_block = []
+    prev_enc_block = [0] * 16
 
-    unencrypted_length = pixels[-1]
-    decrypted_pixels = pixels[-unencrypted_length:]
-    decrypted_pixels[-1] = 255
-    print()
+    for start in range(0, len(pixels), 16):
+        block = pixels[start:start + 16]
+        if len(block) == 16:
+            decrypted_block = aes_decrypt(block, round_keys)
+            plain_chunk = [decrypted_block[i] ^ prev_enc_block[i] for i in range(16)]
+            decrypted_pixels.extend(plain_chunk)
+            prev_enc_block = block
+        else:
+            # Last partial block: XOR back with previous encrypted block
+            r = len(block)
+            decrypted_pixels.extend(block[i] ^ prev_enc_block[i] for i in range(r))
 
-    for start in range(len(pixels) - unencrypted_length - 16, -1, -16):
-    #for start in range(0, len(pixels), 16):
-        pixel_block = pixels[start:start + 16]
-        #print("Decrypting block:", pixel_block)
-        decrypted_block = aes_decrypt(pixel_block, round_keys)
-        #print("Decrypted block:", decrypted_block)
-        decrypted_pixels[0:0] = decrypted_block[:len(pixels[start:start + 15])]
-
-    return decrypted_pixels
+    return decrypted_pixels[:original_length]
 
 
 def apply_custom_aes_v3_encrypt(pixels: List[int], key: str) -> List[int]:
-    #t = datetime.now()
-    #print(t, "Starting encryption")
+    if _NUMBA:
+        key_bytes = np.frombuffer(key.encode("latin-1"), dtype=np.uint8)
+        W = _key_schedule(key_bytes)
+        arr = np.asarray(pixels, dtype=np.uint8)
+        return _process_blocks_cbc(arr, W, True).tolist()
     round_keys = generate_round_keys(key)
-    encrypted_pixels = encrypt_pixels(pixels, round_keys)
-    #print(datetime.now(), "Finished encryption")
-    #print(f"Encryption took {(datetime.now() - t).total_seconds()} seconds")
-
-    return encrypted_pixels
+    return encrypt_pixels(pixels, round_keys)
 
 
-def apply_custom_aes_v3_decrypt(pixels: List[int], key: str) -> List[int]:
+def apply_custom_aes_v3_decrypt(pixels: List[int], key: str, original_length: int) -> List[int]:
+    if _NUMBA:
+        key_bytes = np.frombuffer(key.encode("latin-1"), dtype=np.uint8)
+        W = _key_schedule(key_bytes)
+        arr = np.asarray(pixels, dtype=np.uint8)
+        return _process_blocks_cbc(arr, W, False).tolist()
     round_keys = generate_round_keys(key)
-    decrypted_pixels = decrypt_pixels(pixels, round_keys)
-
-    return decrypted_pixels
+    return decrypt_pixels(pixels, round_keys, original_length)
 
 
 if __name__ == "__main__":
     pixels = np.arange(1, 65).tolist()
+    pixels[0] += 1
     enc = apply_custom_aes_v3_encrypt(pixels, "encryptionkey123")
-    dec = apply_custom_aes_v3_decrypt(enc, "encryptionkey123")
+    dec = apply_custom_aes_v3_decrypt(enc, "encryptionkey123", 64)
     print("Encrypted:", len(enc))
     print(enc)
     print("Decrypted:", len(dec))

@@ -46,7 +46,7 @@ except Exception:
 KEY_PHRASE = "encryptionkey"
 ALL_ALGORITHMS = [
     "AES_CTR", "AES_CBC", "Triple_DES", "ChaCha20",
-    "Logistic_Map", "Henon_Map", "Custom_AES",
+    "Logistic_Map", "Henon_Map", "Custom_v1", "Custom_v2",
 ]
 
 ui_state = ImageUiState()
@@ -456,7 +456,7 @@ def on_decrypt(canvas: tk.Canvas) -> None:
         "triple_des_": "Triple_DES", "des_": "Triple_DES",
         "logistic_map_": "Logistic_Map", "logistic-map_": "Logistic_Map",
         "henon_map_": "Henon_Map", "henon-map_": "Henon_Map",
-        "custom_aes_": "Custom_AES", "custom-aes_": "Custom_AES",
+        "custom_v1_": "Custom_v1", "custom_v2_": "Custom_v2",
     }
     detected_alg = next(
         (v for k, v in prefix_map.items() if stem.startswith(k)),
