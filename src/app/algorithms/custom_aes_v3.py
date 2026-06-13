@@ -1,4 +1,7 @@
+from datetime import datetime
 from typing import List
+
+import numpy as np
 
 
 s_box = [
@@ -216,7 +219,7 @@ def aes_encrypt(block: List[int], round_keys):
 
     state = add_round_key(state, round_keys[:4])
 
-    for round in range(11):
+    for round in range(1, 11):
         state = sub_bytes_and_shift_rows(state)
 
         current_round_keys = round_keys[
@@ -247,24 +250,27 @@ def aes_decrypt(block: List[int], round_keys):
         for j in range(4):
             state[j][i] = block[i * 4 + j]
 
-    for round in range(11):
-        current_round_keys = round_keys[
+    reversed_keys = []
+    for i in range(len(round_keys) - 4, -1, -4):
+        reversed_keys.extend(round_keys[i:i + 4])
+
+    state = add_round_key(state, reversed_keys[:4])
+
+    for round in range(1, 11):
+        current_round_key = reversed_keys[
             round * 4:(round + 1) * 4
         ]
+
+        state = inv_sub_bytes_and_shift_rows(state)
 
         if round < 10:
             state = inv_mix_columns_and_add_round_key(
                 inv_fixed_matrix,
                 state,
-                current_round_keys
+                current_round_key
             )
         else:
-            state = add_round_key(state, current_round_keys)
-
-        state = inv_sub_bytes_and_shift_rows(state)
-
-        if round == 0:
-            state = add_round_key(state, round_keys[:4])
+            state = add_round_key(state, current_round_key)
 
     for i in range(4):
         for j in range(4):
@@ -277,14 +283,18 @@ def encrypt_pixels(pixels: List[int], round_keys) -> List[int]:
     encrypted_pixels = []
     pixel_block = []
 
-    for start in range(0, len(pixels), 16):
+    for start in range(0, len(pixels), 15):
         pixel_block = pixels[start:start + 16]
 
-        if len(pixel_block) < 16:
-            pixel_block = pixel_block + [0] * (16 - len(pixel_block))
-
-        encrypted_block = aes_encrypt(pixel_block, round_keys)
-        encrypted_pixels.extend(encrypted_block[: len(pixels[start:start + 16])])
+        if len(pixel_block) < 16 or start + 16 == len(pixels):
+            encrypted_pixels.extend(pixel_block)
+            encrypted_pixels[-1] = len(pixel_block)
+            #print(encrypted_pixels[-1])
+        else:
+            #print("Encrypting block:", pixel_block)
+            encrypted_block = aes_encrypt(pixel_block, round_keys)
+            #print("Encrypted block:", encrypted_block)
+            encrypted_pixels.extend(encrypted_block[: len(pixels[start:start + 16])])
 
     return encrypted_pixels
 
@@ -293,26 +303,34 @@ def decrypt_pixels(pixels: List[int], round_keys) -> List[int]:
     decrypted_pixels = []
     pixel_block = []
 
-    for start in range(0, len(pixels), 16):
+    unencrypted_length = pixels[-1]
+    decrypted_pixels = pixels[-unencrypted_length:]
+    decrypted_pixels[-1] = 255
+    print()
+
+    for start in range(len(pixels) - unencrypted_length - 16, -1, -16):
+    #for start in range(0, len(pixels), 16):
         pixel_block = pixels[start:start + 16]
-
-        if len(pixel_block) < 16:
-            pixel_block = pixel_block + [0] * (16 - len(pixel_block))
-
+        #print("Decrypting block:", pixel_block)
         decrypted_block = aes_decrypt(pixel_block, round_keys)
-        decrypted_pixels.extend(decrypted_block[: len(pixels[start:start + 16])])
+        #print("Decrypted block:", decrypted_block)
+        decrypted_pixels[0:0] = decrypted_block[:len(pixels[start:start + 15])]
 
     return decrypted_pixels
 
 
-def apply_custom_aes_encrypt(pixels: List[int], key: str) -> List[int]:
+def apply_custom_aes_v3_encrypt(pixels: List[int], key: str) -> List[int]:
+    #t = datetime.now()
+    #print(t, "Starting encryption")
     round_keys = generate_round_keys(key)
     encrypted_pixels = encrypt_pixels(pixels, round_keys)
+    #print(datetime.now(), "Finished encryption")
+    #print(f"Encryption took {(datetime.now() - t).total_seconds()} seconds")
 
     return encrypted_pixels
 
 
-def apply_custom_aes_decrypt(pixels: List[int], key: str) -> List[int]:
+def apply_custom_aes_v3_decrypt(pixels: List[int], key: str) -> List[int]:
     round_keys = generate_round_keys(key)
     decrypted_pixels = decrypt_pixels(pixels, round_keys)
 
@@ -320,7 +338,10 @@ def apply_custom_aes_decrypt(pixels: List[int], key: str) -> List[int]:
 
 
 if __name__ == "__main__":
-    enc = apply_custom_aes_encrypt([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], "encryptionkey123")
-    print("Encrypted:", enc)
-    dec = apply_custom_aes_decrypt(enc, "encryptionkey123")
-    print("Decrypted:", dec)
+    pixels = np.arange(1, 65).tolist()
+    enc = apply_custom_aes_v3_encrypt(pixels, "encryptionkey123")
+    dec = apply_custom_aes_v3_decrypt(enc, "encryptionkey123")
+    print("Encrypted:", len(enc))
+    print(enc)
+    print("Decrypted:", len(dec))
+    print(dec)

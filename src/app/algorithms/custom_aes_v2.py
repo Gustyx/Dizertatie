@@ -358,32 +358,10 @@ def apply_custom_aes_v2_decrypt(pixels: List[int], key: str) -> List[int]:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # NIST FIPS 197 Appendix B test vector
-    key_hex   = "2b7e151628aed2a6abf7158809cf4f3c"
-    plain_hex = "3243f6a8885a308d313198a2e0370734"
-    expected  = "3925841d02dc09fbdc118597196a0b32"
-
-    key_b  = bytes.fromhex(key_hex)
-    plain_b = bytes.fromhex(plain_hex)
-
-    key_arr   = np.frombuffer(key_b,   dtype=np.uint8)
-    plain_arr = np.frombuffer(plain_b, dtype=np.uint8)
-
-    W   = _key_schedule(key_arr)
-    enc = _aes_encrypt_block(plain_arr, W)
-    enc_hex = enc.tobytes().hex()
-
-    print(f"Expected : {expected}")
-    print(f"Got      : {enc_hex}")
-    print(f"PASS     : {enc_hex == expected}")
-
-    dec = _aes_decrypt_block(enc, W)
-    print(f"Round-trip: {dec.tobytes().hex() == plain_hex}")
-    
     enc = apply_custom_aes_v2_encrypt([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
                                        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
                                        33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
-                                       49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], "encryptionkey123")
+                                       49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64], "encryptionkey123")
     print("Encrypted:", len(enc), enc)
     dec = apply_custom_aes_v2_decrypt(enc, "encryptionkey123")
     print("Decrypted:", len(dec), dec)

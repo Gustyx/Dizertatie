@@ -15,10 +15,8 @@ from ..algorithms import (
     apply_custom_aes_encrypt,
     apply_custom_aes_v2_decrypt,
     apply_custom_aes_v2_encrypt,
-    apply_custom_aes_v4_decrypt,
-    apply_custom_aes_v4_encrypt,
-    apply_custom_aes_v5_decrypt,
-    apply_custom_aes_v5_encrypt,
+    apply_custom_aes_v3_decrypt,
+    apply_custom_aes_v3_encrypt,
     apply_logistic_map_decrypt,
     apply_logistic_map_encrypt,
     apply_henon_map_decrypt,
@@ -115,7 +113,6 @@ def _ciphertext_canvas_shape(
     """
 
     if len(source_shape) < 2:
-        # single row of pixels
         return 1, max(1, int(np.ceil(ciphertext_length / channels)))
 
     source_height = max(1, int(source_shape[0]))
@@ -147,7 +144,6 @@ def _save_ciphertext_image(
         mode = "L"
     else:
         padded = padded_flat.reshape((height, width, channels))
-        # support RGB only for now
         mode = "RGB" if channels == 3 else None
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -207,7 +203,6 @@ def encrypt_image(
 
             iv = _read_or_create_nonce(output_path, (16,), 16, "IV")
 
-            # Flatten pixels and encrypt bytes
             encrypted_bytes = aes_cbc_encrypt_bytes(flat, key, iv)
             # Write metadata (including ciphertext length). Do not write a separate .cbc file;
             # instead embed the full ciphertext into the saved image as an uncompressed single-channel image.
@@ -268,17 +263,9 @@ def encrypt_image(
 
             # Convert numpy pixel array to a flat list[int] as expected by custom AES
             flat_pixels = pixels.flatten().tolist()
-            print(len(flat_pixels))
-            transformed_list = apply_custom_aes_v4_encrypt(flat_pixels, key)
-            print(len(transformed_list))
-
-            if len(transformed_list) % 4 != 0:
-                transformed_list.extend([0] * (4 - len(transformed_list) % 4))
-
-            # Convert back to a numpy array with original shape and dtype for reconstruction
-            print(pixels.shape)
+            transformed_list = apply_custom_aes_v2_encrypt(flat_pixels, key)
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(
-                (304, 921, 4)
+                pixels.shape
             )
 
             # Custom AES does not use a nonce in this implementation; write an empty nonce
@@ -389,7 +376,7 @@ def decrypt_image(
             # Convert numpy pixel array to a flat list[int] as expected by custom AES
             flat_pixels = pixels.flatten().tolist()
 
-            transformed_list = apply_custom_aes_v4_decrypt(flat_pixels, key)
+            transformed_list = apply_custom_aes_v2_decrypt(flat_pixels, key)
 
             # Convert back to a numpy array with original shape and dtype for reconstruction
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(
