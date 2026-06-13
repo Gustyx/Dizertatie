@@ -16,6 +16,3 @@ where = ["src"]
 
 [project.scripts]
 run-app = "app.main:main"
-generate-histogram-plots = "app.plots.generate_histogram_plots:main"
-generate-correlation-plots = "app.plots.generate_correlation_plots:main"
-generate-bitplane-plots = "app.plots.generate_bitplane_plots:main"

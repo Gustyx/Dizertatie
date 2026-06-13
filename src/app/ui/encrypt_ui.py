@@ -60,6 +60,7 @@ LAST_ANALYSIS_DATA: dict[str, list[tuple[str, str, str]]] = {}
 _result_notebook: ttk.Notebook | None = None
 _result_notebook_frame: tk.Frame | None = None
 _img_box: tk.Canvas | None = None
+_active_category: str = "All"
 
 base_dir = Path(__file__).resolve().parent.parent / "shared"
 
@@ -159,16 +160,15 @@ def _build_result_tab(
     alg: str,
     sections: list[tuple[str, str, str]],
 ) -> None:
+    global _active_category
     tab = ttk.Frame(notebook)
     notebook.add(tab, text=alg.replace("_", "-"))
 
-    # Category filter row
     btn_row = tk.Frame(tab)
     btn_row.pack(fill="x", padx=4, pady=(4, 2))
 
     cat_buttons: dict[str, tk.Button] = {}
 
-    # Text area
     text_frame = tk.Frame(tab)
     text_frame.pack(fill="both", expand=True)
     scrollbar = ttk.Scrollbar(text_frame, orient="vertical")
@@ -186,6 +186,8 @@ def _build_result_tab(
     scrollbar.config(command=result_text.yview)
 
     def _render(cat: str) -> None:
+        global _active_category
+        _active_category = cat
         for name, btn in cat_buttons.items():
             try:
                 default_bg = btn.master.cget("bg")
@@ -204,12 +206,15 @@ def _build_result_tab(
         result_text.insert("1.0", text)
         result_text.config(state="disabled")
 
+    # Expose render so the tab-switch callback can re-apply the active category
+    tab._render = _render  # type: ignore[attr-defined]
+
     for cat in ("All", "Encrypted", "Encrypted vs Plain", "Encrypted vs Encrypted"):
         btn = tk.Button(btn_row, text=cat, padx=6, command=lambda c=cat: _render(c))
         btn.pack(side="left", padx=2)
         cat_buttons[cat] = btn
 
-    _render("All")
+    _render(_active_category)
 
 
 def _rebuild_result_notebook() -> None:
@@ -232,14 +237,19 @@ def _rebuild_result_notebook() -> None:
         _build_result_tab(nb, alg, sections)
 
     def _on_tab_changed(_event=None) -> None:
-        if _img_box is None:
-            return
         try:
             tab_text = nb.tab(nb.index("current"), "text")
             alg = tab_text.replace("-", "_")
-            path = LAST_ENCRYPTED_PATHS.get(alg)
-            if path and path.exists():
-                display_image(path, _img_box, ui_state, extra_window_height=320)
+            # Update displayed image
+            if _img_box is not None:
+                path = LAST_ENCRYPTED_PATHS.get(alg)
+                if path and path.exists():
+                    display_image(path, _img_box, ui_state, extra_window_height=320)
+            # Re-apply the active category on the newly selected tab
+            current_tab = nb.nametowidget(nb.select())
+            render_fn = getattr(current_tab, "_render", None)
+            if render_fn is not None:
+                render_fn(_active_category)
         except Exception:
             pass
 
