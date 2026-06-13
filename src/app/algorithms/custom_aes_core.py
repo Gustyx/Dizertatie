@@ -1,15 +1,5 @@
 from typing import List
 
-import numpy as np
-
-try:
-    from numba import njit
-    _NUMBA = True
-except ImportError:
-    _NUMBA = False
-    def njit(fn=None, **kw):
-        return (lambda f: f)(fn) if fn else (lambda f: f)
-
 # ---------------------------------------------------------------------------
 # AES-128 lookup tables
 # ---------------------------------------------------------------------------
@@ -75,157 +65,7 @@ round_constants = [
 ]
 
 # ---------------------------------------------------------------------------
-# Flat arrays for Numba (1-D uint8, no Python list-of-lists)
-# ---------------------------------------------------------------------------
-
-S_BOX           = np.array([v for row in s_box            for v in row], dtype=np.uint8)
-INV_S_BOX       = np.array([v for row in inv_s_box        for v in row], dtype=np.uint8)
-RCON            = np.array([row[0] for row in round_constants],           dtype=np.uint8)
-_FIXED_FLAT     = np.array([v for row in fixed_matrix     for v in row], dtype=np.uint8)
-_INV_FIXED_FLAT = np.array([v for row in inv_fixed_matrix for v in row], dtype=np.uint8)
-
-# ---------------------------------------------------------------------------
-# Numba JIT — key schedule + block cipher (FIPS 197)
-# ---------------------------------------------------------------------------
-
-@njit
-def _gmul(a, b):
-    p = np.uint8(0)
-    a = np.uint8(a); b = np.uint8(b)
-    for _ in range(8):
-        if b & np.uint8(1):
-            p ^= a
-        hi = a & np.uint8(0x80)
-        a = np.uint8((a << np.uint8(1)) & np.uint8(0xFF))
-        if hi:
-            a ^= np.uint8(0x1B)
-        b >>= np.uint8(1)
-    return p
-
-
-@njit
-def _key_schedule(key):
-    W = np.zeros((44, 4), dtype=np.uint8)
-    for i in range(4):
-        for b in range(4):
-            W[i, b] = key[i * 4 + b]
-    for i in range(4, 44):
-        temp = W[i - 1].copy()
-        if i % 4 == 0:
-            t = temp[0]; temp[0] = temp[1]; temp[1] = temp[2]; temp[2] = temp[3]; temp[3] = t
-            for b in range(4):
-                temp[b] = S_BOX[temp[b]]
-            temp[0] ^= RCON[i // 4 - 1]
-        for b in range(4):
-            W[i, b] = W[i - 4, b] ^ temp[b]
-    return W
-
-
-@njit
-def _add_round_key(state, W, rnd):
-    out = state.copy()
-    base = rnd * 4
-    for col in range(4):
-        for row in range(4):
-            out[row, col] ^= W[base + col, row]
-    return out
-
-
-@njit
-def _aes_encrypt_block(block, W):
-    state = np.zeros((4, 4), dtype=np.uint8)
-    for col in range(4):
-        for row in range(4):
-            state[row, col] = block[col * 4 + row]
-    state = _add_round_key(state, W, 0)
-    for rnd in range(1, 10):
-        new_s = np.zeros((4, 4), dtype=np.uint8)
-        for i in range(4):
-            for j in range(4):
-                new_s[i, (j - i) % 4] = S_BOX[state[i, j]]
-        mixed = np.zeros((4, 4), dtype=np.uint8)
-        for i in range(4):
-            for j in range(4):
-                mixed[i, j] = (
-                    _gmul(_FIXED_FLAT[i * 4 + 0], new_s[0, j]) ^
-                    _gmul(_FIXED_FLAT[i * 4 + 1], new_s[1, j]) ^
-                    _gmul(_FIXED_FLAT[i * 4 + 2], new_s[2, j]) ^
-                    _gmul(_FIXED_FLAT[i * 4 + 3], new_s[3, j]) ^
-                    W[rnd * 4 + j, i]
-                )
-        state = mixed
-    new_s = np.zeros((4, 4), dtype=np.uint8)
-    for i in range(4):
-        for j in range(4):
-            new_s[i, (j - i) % 4] = S_BOX[state[i, j]]
-    state = _add_round_key(new_s, W, 10)
-    out = np.empty(16, dtype=np.uint8)
-    for col in range(4):
-        for row in range(4):
-            out[col * 4 + row] = state[row, col]
-    return out
-
-
-@njit
-def _aes_decrypt_block(block, W):
-    state = np.zeros((4, 4), dtype=np.uint8)
-    for col in range(4):
-        for row in range(4):
-            state[row, col] = block[col * 4 + row]
-    state = _add_round_key(state, W, 10)
-    for rnd in range(9, 0, -1):
-        # InvShiftRows (right-shift row i by i)
-        new_s = np.zeros((4, 4), dtype=np.uint8)
-        for i in range(4):
-            for j in range(4):
-                new_s[i, j] = state[i, (j - i) % 4]
-        # InvSubBytes
-        for i in range(4):
-            for j in range(4):
-                new_s[i, j] = INV_S_BOX[new_s[i, j]]
-        state = _add_round_key(new_s, W, rnd)
-        # InvMixColumns
-        mixed = np.zeros((4, 4), dtype=np.uint8)
-        for i in range(4):
-            for j in range(4):
-                mixed[i, j] = (
-                    _gmul(_INV_FIXED_FLAT[i * 4 + 0], state[0, j]) ^
-                    _gmul(_INV_FIXED_FLAT[i * 4 + 1], state[1, j]) ^
-                    _gmul(_INV_FIXED_FLAT[i * 4 + 2], state[2, j]) ^
-                    _gmul(_INV_FIXED_FLAT[i * 4 + 3], state[3, j])
-                )
-        state = mixed
-    new_s = np.zeros((4, 4), dtype=np.uint8)
-    for i in range(4):
-        for j in range(4):
-            new_s[i, j] = state[i, (j - i) % 4]
-    for i in range(4):
-        for j in range(4):
-            new_s[i, j] = INV_S_BOX[new_s[i, j]]
-    state = _add_round_key(new_s, W, 0)
-    out = np.empty(16, dtype=np.uint8)
-    for col in range(4):
-        for row in range(4):
-            out[col * 4 + row] = state[row, col]
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Warm up shared JIT functions once at import time so the first encrypt/decrypt
-# call on either v2 or v3 does not pay the full compilation cost.
-# ---------------------------------------------------------------------------
-
-if _NUMBA:
-    _dummy_key = np.zeros(16, dtype=np.uint8)
-    _dummy_block = np.zeros(16, dtype=np.uint8)
-    _dummy_W = _key_schedule(_dummy_key)
-    _aes_encrypt_block(_dummy_block, _dummy_W)
-    _aes_decrypt_block(_dummy_block, _dummy_W)
-    del _dummy_key, _dummy_block, _dummy_W
-
-
-# ---------------------------------------------------------------------------
-# Pure-Python fallback (used when _NUMBA is False)
+# Core operations
 # ---------------------------------------------------------------------------
 
 def galois_multiplication(a: int, b: int) -> int:
@@ -250,12 +90,10 @@ def inv_sub_byte(value: int) -> int:
 
 
 def generate_round_keys(key: str):
-    """FIPS 197-compatible key schedule (shared by v2 and v3)."""
     blocks = [[ord(key[i + j]) for j in range(4)] for i in range(0, 16, 4)]
     idx = 3
     for rnd in range(10):
         prev = blocks[idx]
-        # RotWord → SubWord → XOR Rcon
         expanded = [
             sub_byte(prev[1]) ^ round_constants[rnd][0],
             sub_byte(prev[2]),
@@ -281,7 +119,6 @@ def aes_encrypt(block: List[int], round_keys) -> List[int]:
             state[j][i] = block[i * 4 + j]
     state = add_round_key(state, round_keys[:4])
     for rnd in range(1, 11):
-        # SubBytes + ShiftRows
         new_s = [[0] * 4 for _ in range(4)]
         for i in range(4):
             for j in range(4):
@@ -289,7 +126,6 @@ def aes_encrypt(block: List[int], round_keys) -> List[int]:
         state = new_s
         keys = round_keys[rnd * 4:(rnd + 1) * 4]
         if rnd < 10:
-            # MixColumns + AddRoundKey
             mixed = [[0] * 4 for _ in range(4)]
             for i in range(4):
                 for j in range(4):
@@ -317,15 +153,12 @@ def aes_decrypt(block: List[int], round_keys) -> List[int]:
             state[j][i] = block[i * 4 + j]
     state = add_round_key(state, round_keys[40:])
     for rnd in range(9, 0, -1):
-        # InvShiftRows
         new_s = [[0] * 4 for _ in range(4)]
         for i in range(4):
             for j in range(4):
                 new_s[i][j] = state[i][(j - i) % 4]
-        # InvSubBytes
         state = [[inv_sub_byte(new_s[i][j]) for j in range(4)] for i in range(4)]
         state = add_round_key(state, round_keys[rnd * 4:(rnd + 1) * 4])
-        # InvMixColumns
         mixed = [[0] * 4 for _ in range(4)]
         for i in range(4):
             for j in range(4):
@@ -336,7 +169,6 @@ def aes_decrypt(block: List[int], round_keys) -> List[int]:
                     galois_multiplication(inv_fixed_matrix[i][3], state[3][j])
                 )
         state = mixed
-    # Final round: InvShiftRows + InvSubBytes + AddRoundKey(0)
     new_s = [[0] * 4 for _ in range(4)]
     for i in range(4):
         for j in range(4):

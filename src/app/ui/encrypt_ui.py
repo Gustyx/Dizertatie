@@ -62,7 +62,7 @@ ALL_ALGORITHMS = [
 
 ui_state = ImageUiState()
 
-SELECTED_ALGORITHMS: set[str] = {}
+SELECTED_ALGORITHMS: set[str] = {"AES_CTR"}
 ALGORITHM_BUTTONS: dict[str, tk.Button] = {}
 
 LAST_ENCRYPTED_PATHS: dict[str, Path] = {}
