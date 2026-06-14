@@ -23,7 +23,6 @@ IMAGE_FILETYPES = [("Images", "*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif")]
 
 @contextmanager
 def _allow_large_images():
-    """Temporarily disable PIL's decompression bomb protection for preview loading."""
     previous_limit = Image.MAX_IMAGE_PIXELS
     Image.MAX_IMAGE_PIXELS = None
     try:

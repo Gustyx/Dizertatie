@@ -37,7 +37,6 @@ def _resolve_plain_path(encrypted_path: Path) -> tuple[Path, Path]:
 
 
 def _open_image_viewer(image_path: Path, title: str, images: list[ImageTk.PhotoImage]) -> None:
-    """Open a standalone resizable window — image scales as you drag the corner."""
     with Image.open(image_path) as _im:
         source = _im.copy()
 
@@ -149,7 +148,6 @@ def _build_scrollable_tab(parent: ttk.Notebook) -> tuple[ttk.Frame, ttk.Frame]:
 
 
 def _find_all_encrypted_variants(encrypted_path: Path) -> dict[str, Path]:
-    """Scan the encrypted/ folder for every algorithm variant of the same plain image."""
     _, _, plain_name = encrypted_path.name.partition("_enc_")
     plain_stem = Path(plain_name).stem
     encrypted_dir = encrypted_path.parent
@@ -168,7 +166,6 @@ def _find_all_encrypted_variants(encrypted_path: Path) -> dict[str, Path]:
 
 
 def _load_times_from_json(enc_paths: dict[str, Path]) -> dict[str, float]:
-    """Extract encryption times from saved analysis JSON files."""
     import json, re
     times: dict[str, float] = {}
     for alg, enc_path in enc_paths.items():

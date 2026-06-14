@@ -5,12 +5,6 @@ from ..utils import align_rgb_images, load_rgb_image
 
 
 def number_of_pixel_change_rate(first_image, second_image):
-    """Compute NPCR between two images.
-
-    NPCR measures the percentage of pixels that change between two images.
-    For RGB images, each channel is compared independently and the result is
-    reported per channel plus an overall grayscale-style rate.
-    """
     img_a = load_rgb_image(first_image)
     img_b = load_rgb_image(second_image)
 

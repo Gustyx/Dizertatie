@@ -20,12 +20,6 @@ def _pearson(x, y):
 
 
 def correlation_between_images(path_orig, path_enc):
-    """Compute correlation metrics between two images.
-
-    Returns a dict with per-channel Pearson correlations and an overall correlation
-    computed as the mean of the R, G and B values.
-    Values near 0 indicate low linear correlation (desired for strong encryption).
-    """
     a, b = align_rgb_images(load_rgb_image(path_orig), load_rgb_image(path_enc))
 
     # per-channel
@@ -40,14 +34,6 @@ def correlation_between_images(path_orig, path_enc):
 
 
 def horizontal_pixel_correlation(path_img):
-    """Compute correlation between horizontally adjacent pixels.
-
-    Correlates each pixel with its right neighbor (x, y) with (x+1, y).
-    High values (close to 1) indicate structure; low values (close to 0)
-    indicate randomness/encryption.
-
-    Returns dict with per-channel and overall correlations.
-    """
     img = load_rgb_image(path_img)
     if img.shape[1] < 2:
         raise ValueError("Image width must be >= 2")
@@ -68,14 +54,6 @@ def horizontal_pixel_correlation(path_img):
 
 
 def vertical_pixel_correlation(path_img):
-    """Compute correlation between vertically adjacent pixels.
-
-    Correlates each pixel with its bottom neighbor (x, y) with (x, y+1).
-    High values (close to 1) indicate structure; low values (close to 0)
-    indicate randomness/encryption.
-
-    Returns dict with per-channel and overall correlations.
-    """
     img = load_rgb_image(path_img)
     if img.shape[0] < 2:
         raise ValueError("Image height must be >= 2")
@@ -96,14 +74,6 @@ def vertical_pixel_correlation(path_img):
 
 
 def diagonal_pixel_correlation(path_img):
-    """Compute correlation between diagonally adjacent pixels.
-
-    Correlates each pixel with its bottom-right neighbor (x, y) with (x+1, y+1).
-    High values (close to 1) indicate structure; low values (close to 0)
-    indicate randomness/encryption.
-
-    Returns dict with per-channel and overall correlations.
-    """
     img = load_rgb_image(path_img)
     if img.shape[0] < 2 or img.shape[1] < 2:
         raise ValueError("Image width and height must be >= 2")

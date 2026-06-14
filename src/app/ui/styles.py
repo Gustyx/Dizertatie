@@ -1,4 +1,3 @@
-"""Shared UI theme constants and ttk style configuration."""
 from __future__ import annotations
 
 import tkinter as tk

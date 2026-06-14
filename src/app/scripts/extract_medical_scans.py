@@ -4,7 +4,6 @@ from PIL import Image
 
 
 def normalize_to_uint8(arr: np.ndarray) -> np.ndarray:
-    """Normalize a numeric array to uint8 (0-255)."""
     if np.issubdtype(arr.dtype, np.floating):
         amin = float(arr.min())
         amax = float(arr.max())
@@ -13,7 +12,6 @@ def normalize_to_uint8(arr: np.ndarray) -> np.ndarray:
         norm = (arr - amin) / (amax - amin)
         return (norm * 255).astype(np.uint8)
 
-    # integer types: clip to 0-255 and cast
     if arr.dtype != np.uint8:
         return np.clip(arr, 0, 255).astype(np.uint8)
     return arr
@@ -30,7 +28,6 @@ def main() -> None:
     for index, img in enumerate(images):
         arr = np.asarray(img)
 
-        # If channels are first (3, H, W), convert to (H, W, 3)
         if arr.ndim == 3 and arr.shape[0] == 3:
             arr = np.transpose(arr, (1, 2, 0))
 

@@ -7,7 +7,6 @@ MAX_ANALYSIS_SIZE = (2048, 2048)
 
 
 def _shannon_entropy_uint8(values):
-    """Compute Shannon entropy (base-2) for uint8 intensity values."""
     flat = np.asarray(values, dtype=np.uint8).ravel()
     if flat.size == 0:
         return float("nan")
@@ -19,12 +18,6 @@ def _shannon_entropy_uint8(values):
 
 
 def pixel_entropy(image):
-    """Compute global pixel entropy.
-
-    Returns a dict:
-    - grayscale image: {"grayscale": H}
-    - RGB image: {"per_channel": {"R": Hr, "G": Hg, "B": Hb}, "overall": Ho}
-    """
     img = load_rgb_image(image)
 
     if img.ndim == 2:
@@ -45,7 +38,6 @@ def pixel_entropy(image):
 
 
 def normalized_pixel_entropy(image):
-    """Compute entropy normalized to [0, 1] by dividing by max 8 bits."""
     result = pixel_entropy(image)
     if "grayscale" in result:
         return {"grayscale": float(result["grayscale"] / 8.0)}
@@ -60,10 +52,6 @@ def normalized_pixel_entropy(image):
 
 
 def block_entropy(image, block_size=8):
-    """Compute mean Shannon entropy over non-overlapping blocks.
-
-    Useful for measuring local randomness instead of only whole-image randomness.
-    """
     if block_size <= 0:
         raise ValueError("block_size must be > 0")
 
@@ -97,7 +85,6 @@ def block_entropy(image, block_size=8):
 
 
 def _channel_block_entropy(channel, block_size):
-    """Return (mean_entropy, n_blocks, used_size) for a single 2-D channel."""
     h, w = channel.shape
     h_trim = (h // block_size) * block_size
     w_trim = (w // block_size) * block_size
@@ -125,7 +112,6 @@ def _channel_block_entropy(channel, block_size):
 
 
 def pixel_entropy_with_blocks(image, block_sizes=(8, 16, 32)):
-    """Compute global entropy and block entropy summaries together."""
     result = pixel_entropy(image)
     block_results = {}
 

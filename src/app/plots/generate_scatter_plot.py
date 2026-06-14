@@ -48,7 +48,6 @@ def render_scatter_plot(
     encrypted_paths: dict[str, Path],
     output_path: Path,
 ) -> None:
-    """N_rows × 3 density heatmap grid: rows = plain + each algorithm, cols = H/V/D."""
     images: list[tuple[str, np.ndarray]] = [("Original", _load_preview(plain_path))]
     for alg, p in encrypted_paths.items():
         if p.exists():

@@ -32,7 +32,6 @@ def render_bitplane_bars_all_algorithms(
     encrypted_paths: dict[str, Path],
     output_path: Path,
 ) -> None:
-    """One row of R/G/B bitplane bar charts per algorithm (plain vs encrypted)."""
     valid = [(alg, p) for alg, p in encrypted_paths.items() if p.exists()]
     if not valid:
         return

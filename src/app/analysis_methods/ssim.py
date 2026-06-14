@@ -12,13 +12,6 @@ def _ssim_uint8(a, b):
 
 
 def structural_similarity(first_image, second_image):
-    """Compute SSIM between two images.
-
-    Returns a dict matching the same shape as PSNR/MSE helpers:
-    - grayscale: value for grayscale inputs
-    - per_channel: dict for R/G/B when input is RGB
-    - overall: overall SSIM computed on luminance
-    """
     img_a = load_rgb_image(first_image)
     img_b = load_rgb_image(second_image)
 

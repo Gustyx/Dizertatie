@@ -6,7 +6,6 @@ from PIL import Image
 
 @contextmanager
 def _allow_large_images():
-    """Temporarily disable PIL's decompression bomb limit while loading known datasets."""
     previous_limit = Image.MAX_IMAGE_PIXELS
     Image.MAX_IMAGE_PIXELS = None
     try:
@@ -16,7 +15,6 @@ def _allow_large_images():
 
 
 def extract_pixels(image_path: Path) -> tuple[np.ndarray, str]:
-    """Load an image and return its pixel array plus mode."""
     with _allow_large_images():
         with Image.open(image_path) as img:
             return np.array(img), img.mode
@@ -26,7 +24,6 @@ def extract_preview_pixels(
     image_path: Path,
     max_size: tuple[int, int] = (2048, 2048),
 ) -> tuple[np.ndarray, str]:
-    """Load a downscaled preview image and return its pixel array plus mode."""
     with _allow_large_images():
         with Image.open(image_path) as img:
             img.thumbnail(max_size)
@@ -35,7 +32,6 @@ def extract_preview_pixels(
 
 
 def reconstruct_image(pixel_array: np.ndarray, mode: str, output_path: Path) -> None:
-    """Create and save an image from a pixel array using the original mode."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     image = Image.fromarray(pixel_array.astype(np.uint8), mode=mode)
     image.save(output_path)

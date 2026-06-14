@@ -228,6 +228,7 @@ def _body_to_text(title: str, body: dict, percent: bool = False) -> str:
     if "grayscale" in body:
         value = body["grayscale"]
         lines.append(f"Grayscale: {value:.6f}{suffix}")
+
     if "overall" in body:
         value = body["overall"]
         lines.append(f"Overall: {value:.6f}{suffix}")
@@ -422,7 +423,6 @@ def run_analysis(
         "input_image": str(image_path),
         "algorithm": algorithm,
         "encryption_time_seconds": encryption_time,
-        # Record metadata for the RGB-normalized plain image and the encrypted output
         "plain_image": _image_metadata(image_path, normalize_rgb=True),
         "encrypted_image": _image_metadata(encrypted_path, normalize_rgb=True),
         "analysis_sections": _build_ui_sections(

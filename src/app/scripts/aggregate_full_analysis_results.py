@@ -1,25 +1,9 @@
-"""aggregate_full_analysis_results.py
-
-Reads the per-category *_avg.json files from every
-    shared/images/<category>/aggregated_analysis_results/
-folder and produces one cross-category average per algorithm, saved to
-    shared/images/full_analysis_results/
-as  <algorithm>_full_avg.json
-
-The averaging logic is identical to aggregate_dataset_analysis_results.py:
-numeric leaf values are averaged recursively through the nested JSON
-structure, so every metric (including deeply nested per-channel values)
-is correctly aggregated.
-"""
-
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 from typing import Any
 
-# ── Constants ────────────────────────────────────────────────────────────────
 
 ALGORITHM_PREFIXES = (
     "aes_ctr",
@@ -43,7 +27,6 @@ CATEGORY_DIRS = [
 
 OUTPUT_DIR = IMAGES_ROOT / "full_analysis_results"
 
-# ── Recursive aggregation helpers ────────────────────────────────────────────
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
@@ -71,10 +54,8 @@ def _render_like_reference(value: float, reference: Any) -> Any:
 
 
 def _avg_nodes(nodes: list[Any]) -> Any:
-    """Recursively compute the element-wise average of a list of JSON nodes."""
     numeric_values = [_parse_numeric(n) for n in nodes]
 
-    # All leaves are numeric — compute mean
     if all(v is not None for v in numeric_values):
         values = [v for v in numeric_values if v is not None]
         mean = sum(values) / len(values)
@@ -82,7 +63,6 @@ def _avg_nodes(nodes: list[Any]) -> Any:
 
     first = nodes[0]
 
-    # Dict nodes — recurse key by key
     if isinstance(first, dict):
         if not all(isinstance(n, dict) for n in nodes):
             return first
@@ -98,24 +78,18 @@ def _avg_nodes(nodes: list[Any]) -> Any:
                 result[key] = _avg_nodes(present)
         return result
 
-    # List nodes — recurse element by element
     if isinstance(first, list):
         if not all(isinstance(n, list) for n in nodes):
             return first
         min_len = min(len(n) for n in nodes)
         return [_avg_nodes([n[i] for n in nodes]) for i in range(min_len)]
 
-    # Non-numeric scalar — return as-is
     return first
 
 
-# ── Main logic ───────────────────────────────────────────────────────────────
-
 def _avg_file_for_algorithm(category_dir: Path, algorithm: str) -> Path | None:
-    """Return the *_avg.json path for a given algorithm inside a category dir."""
     results_dir = category_dir / "aggregated_analysis_results"
     if not results_dir.exists():
-        # Some categories use a variant suffix (e.g. aggregated_analysis_results2)
         candidates = sorted(category_dir.glob("aggregated_analysis_results*"))
         if not candidates:
             return None
@@ -134,7 +108,7 @@ def aggregate_full(output_dir: Path = OUTPUT_DIR) -> list[Path]:
     generated: list[Path] = []
 
     for algorithm in ALGORITHM_PREFIXES:
-        records: list[tuple[str, Any]] = []  # (category_name, data)
+        records: list[tuple[str, Any]] = []
 
         for category_dir in CATEGORY_DIRS:
             if not category_dir.exists():
@@ -158,7 +132,6 @@ def aggregate_full(output_dir: Path = OUTPUT_DIR) -> list[Path]:
         just_data = [r[1] for r in records]
         full_avg = _avg_nodes(just_data)
 
-        # Wrap with self-documenting metadata
         output = {
             "_meta": {
                 "algorithm": algorithm,

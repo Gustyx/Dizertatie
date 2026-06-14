@@ -37,7 +37,6 @@ def render_histogram_plot(
     encrypted_paths: dict[str, Path],
     output_path: Path,
 ) -> None:
-    """1×(1+N) plot: one panel for plain image, one panel per encrypted algorithm."""
     plain = _load_rgb(plain_path)
 
     enc_images: list[tuple[str, np.ndarray]] = []

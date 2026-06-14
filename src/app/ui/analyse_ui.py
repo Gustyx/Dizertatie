@@ -92,13 +92,11 @@ def _format_result_body(title: str, result: dict, percent: bool = False) -> str:
 def format_result(title: str, result: dict, percent: bool = False) -> str:
     suffix = " %" if percent else ""
     lines = [title]
-    # Show per-channel values first when available
     if "per_channel" in result:
         lines.append("Per channel:")
         for channel, value in result["per_channel"].items():
             lines.append(f"  {channel}: {value:.6f}{suffix}")
 
-    # Then include grayscale/overall values if present
     if "grayscale" in result:
         lines.append(f"Grayscale: {result['grayscale']:.6f}{suffix}")
     if "overall" in result:
@@ -238,6 +236,7 @@ def format_entropy_result(title: str, result: dict) -> str:
 
     if "grayscale" in result:
         lines.append(f"Grayscale: {result['grayscale']:.6f}")
+
     if "overall" in result:
         lines.append(f"Overall: {result['overall']:.6f}")
 
@@ -430,8 +429,6 @@ def on_analyse() -> None:
                 / "plain"
                 / f"{encrypted_path.name.split('_enc_')[-1]}"
             )
-            # Some analysis functions expect path strings or numpy arrays,
-            # not Path objects. Convert to strings for compatibility.
             e_str = str(encrypted_path)
             eb_str = str(encrypted_plus_one_bit_path)
             p_str = str(plain_path)

@@ -216,7 +216,7 @@ def _build_result_tab(
         result_text.insert("1.0", text)
         result_text.config(state="disabled")
 
-    tab._render = _render  # type: ignore[attr-defined]
+    tab._render = _render
 
     for cat in ("All", "Encrypted", "Encrypted vs Plain", "Encrypted vs Encrypted"):
         btn = make_filter_button(btn_row, cat, command=lambda c=cat: _render(c))
@@ -293,7 +293,6 @@ def _load_analysis_json(enc_path: Path) -> list[tuple[str, str, str]] | None:
 
 
 def _alg_from_enc_path(path: Path) -> str | None:
-    """Detect algorithm name from an encrypted filename prefix."""
     stem = path.stem.lower()
     for alg in ALL_ALGORITHMS:
         if stem.startswith(alg.lower() + "_enc_"):
@@ -501,7 +500,6 @@ def on_decrypt(canvas: tk.Canvas) -> None:
 
 
 def _on_view_plots(root: tk.Misc) -> None:
-    """Open plots for the active notebook tab's algorithm, or fallback to selected image."""
     alg: str | None = None
     if _result_notebook is not None and LAST_ENCRYPTED_PATHS:
         try:

@@ -5,17 +5,11 @@ from ..utils import align_rgb_images, load_rgb_image
 
 
 def unified_average_changing_intensity(first_image, second_image):
-    """Compute UACI between two images.
-
-    UACI = (1/(M*N)) * sum |A(i,j)-B(i,j)| / 255 * 100%
-    For RGB images, returns per-channel values and an overall mean across channels.
-    """
     img_a = load_rgb_image(first_image)
     img_b = load_rgb_image(second_image)
 
     img_a, img_b = align_rgb_images(img_a, img_b)
 
-    # Work with signed type to avoid uint8 wrap-around on subtraction
     if img_a.ndim == 2:
         diff = np.abs(img_a.astype(np.int16) - img_b.astype(np.int16))
         uaci_value = float(diff.mean() / 255.0 * 100.0)

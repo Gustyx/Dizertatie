@@ -9,7 +9,6 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 
 
 def sort_key(path: Path) -> tuple[int, str]:
-    """Sort numeric filenames first, then fall back to lexicographic order."""
     try:
         return int(path.stem), path.name
     except ValueError:

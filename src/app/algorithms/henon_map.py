@@ -43,10 +43,6 @@ def _henon_loop(
     b: float,
     burn_in: int,
 ) -> np.ndarray:
-    """
-    Burn-in + generate *length* values, interleaving x and y.
-    Fractional-part wrapping prevents divergence without constant fallback.
-    """
     for _ in range(burn_in):
         xn = 1.0 - a * x * x + y
         yn = b * x
@@ -81,11 +77,6 @@ def _permutation(length: int, key_phrase: str, label: str = "perm") -> np.ndarra
 
 
 def _keystream(length: int, key_phrase: str, label: str = "stream") -> np.ndarray:
-    """
-    FIX: Direct floor(v*256) of Henon values clusters around attractor
-    bounds, producing color bias.  Instead, pack chunks of raw float64
-    values into SHA-256, yielding cryptographically uniform bytes.
-    """
     if length <= 0:
         return np.empty(0, dtype=np.uint8)
 
@@ -117,15 +108,6 @@ def _keystream(length: int, key_phrase: str, label: str = "stream") -> np.ndarra
 
 
 def henon_map_encrypt_array(pixel_array: np.ndarray, key_phrase: str) -> np.ndarray:
-    """
-    Encrypt a H x W x C (or H x W grayscale) image array.
-
-    Pipeline:
-      1. Row permutation    - shuffle rows
-      2. Column permutation - shuffle columns
-      3. Global pixel permutation - flatten and shuffle all pixels
-      4. XOR diffusion      - XOR each channel with hashed keystream
-    """
     img = pixel_array.astype(np.uint8, copy=True)
     shape = img.shape
 
@@ -161,15 +143,6 @@ def henon_map_encrypt_array(pixel_array: np.ndarray, key_phrase: str) -> np.ndar
 
 
 def henon_map_decrypt_array(encrypted_array: np.ndarray, key_phrase: str) -> np.ndarray:
-    """
-    Exact inverse of henon_map_encrypt_array.
-
-    Pipeline (reversed):
-      4. Un-XOR diffusion
-      3. Inverse global pixel permutation
-      2. Inverse column permutation
-      1. Inverse row permutation
-    """
     img = encrypted_array.astype(np.uint8, copy=True)
     shape = img.shape
 
@@ -211,7 +184,6 @@ def henon_map_decrypt_array(encrypted_array: np.ndarray, key_phrase: str) -> np.
 
 
 def henon_map_encrypt_bytes(data: bytes, key_phrase: str) -> bytes:
-    """Encrypt raw bytes (no pixel-awareness)."""
     if not data:
         return b""
     arr = np.frombuffer(data, dtype=np.uint8)

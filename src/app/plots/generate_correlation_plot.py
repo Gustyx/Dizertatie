@@ -38,7 +38,6 @@ def render_correlation_plot(
     encrypted_paths: dict[str, Path],
     output_path: Path,
 ) -> None:
-    """Grouped bar chart of absolute pixel correlation (H/V/D) per algorithm."""
     alg_labels: list[str] = []
     dir_values: dict[str, list[float]] = {d: [] for d, _ in _DIRECTIONS}
 

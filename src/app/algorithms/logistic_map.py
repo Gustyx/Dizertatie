@@ -73,20 +73,14 @@ def _transform_bytes(data: bytes, key_phrase: str, *, decrypt: bool) -> bytes:
 
 
 def logistic_map_encrypt_bytes(data: bytes, key_phrase: str) -> bytes:
-    """Encrypt bytes using a reversible logistic-map permutation and keystream."""
-
     return _transform_bytes(data, key_phrase, decrypt=False)
 
 
 def logistic_map_decrypt_bytes(data: bytes, key_phrase: str) -> bytes:
-    """Decrypt bytes produced by `logistic_map_encrypt_bytes`."""
-
     return _transform_bytes(data, key_phrase, decrypt=True)
 
 
 def logistic_map_encrypt_array(pixel_array: np.ndarray, key_phrase: str) -> np.ndarray:
-    """Encrypt a numpy pixel array and return an array with the same shape."""
-
     flat = pixel_array.astype(np.uint8, copy=False).tobytes()
     encrypted = logistic_map_encrypt_bytes(flat, key_phrase)
     return np.frombuffer(encrypted, dtype=np.uint8).reshape(pixel_array.shape)
@@ -95,24 +89,18 @@ def logistic_map_encrypt_array(pixel_array: np.ndarray, key_phrase: str) -> np.n
 def logistic_map_decrypt_array(
     encrypted_array: np.ndarray, key_phrase: str
 ) -> np.ndarray:
-    """Decrypt a numpy pixel array produced by `logistic_map_encrypt_array`."""
-
     encrypted = encrypted_array.astype(np.uint8, copy=False).tobytes()
     decrypted = logistic_map_decrypt_bytes(encrypted, key_phrase)
     return np.frombuffer(decrypted, dtype=np.uint8).reshape(encrypted_array.shape)
 
 
 def apply_logistic_map_encrypt(pixels: Sequence[int], key_phrase: str) -> list[int]:
-    """Encrypt a flat pixel sequence and return a list of uint8 values."""
-
     flat = np.asarray(list(pixels), dtype=np.uint8)
     encrypted = logistic_map_encrypt_bytes(flat.tobytes(), key_phrase)
     return np.frombuffer(encrypted, dtype=np.uint8).tolist()
 
 
 def apply_logistic_map_decrypt(pixels: Sequence[int], key_phrase: str) -> list[int]:
-    """Decrypt a flat pixel sequence and return a list of uint8 values."""
-
     flat = np.asarray(list(pixels), dtype=np.uint8)
     decrypted = logistic_map_decrypt_bytes(flat.tobytes(), key_phrase)
     return np.frombuffer(decrypted, dtype=np.uint8).tolist()

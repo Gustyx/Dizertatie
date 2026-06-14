@@ -5,25 +5,21 @@ from cryptography.hazmat.primitives.ciphers import Cipher, modes
 
 
 def derive_des_key(key_phrase: str) -> bytes:
-    """Derive a 24-byte TripleDES key from a passphrase (not secure for production)."""
-
     return hashlib.sha256(key_phrase.encode("utf-8")).digest()[:24]
 
 
 def des_ctr_transform(pixel_array: np.ndarray, key: bytes, nonce: bytes) -> np.ndarray:
-    """Encrypt or decrypt pixel data with TripleDES-CTR (manual CTR using ECB)."""
-
     flat_pixels = pixel_array.astype(np.uint8).tobytes()
 
-    algo = decrepit_alg.TripleDES(key)
+    algorithm = decrepit_alg.TripleDES(key)
 
-    block_size = algo.block_size // 8
+    block_size = algorithm.block_size // 8
     if len(nonce) != block_size:
         raise ValueError(
             f"Invalid nonce length. Expected {block_size} bytes for 3DES CTR."
         )
 
-    cipher = Cipher(algo, modes.ECB())
+    cipher = Cipher(algorithm, modes.ECB())
     transform = cipher.encryptor()
     transformed_bytes = bytearray(len(flat_pixels))
     counter = int.from_bytes(nonce, "big")

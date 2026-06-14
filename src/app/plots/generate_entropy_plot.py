@@ -28,7 +28,6 @@ def render_entropy_plot(
     encrypted_paths: dict[str, Path],
     output_path: Path,
 ) -> None:
-    """Bar chart of overall Shannon entropy per algorithm for a single plain image."""
     alg_labels: list[str] = []
     entropy_values: list[float] = []
 

@@ -105,11 +105,6 @@ def _load_ciphertext_and_meta(
 def _ciphertext_canvas_shape(
     ciphertext_length: int, source_shape: tuple[int, ...], channels: int = 1
 ) -> tuple[int, int]:
-    """Choose a 2D canvas shape that preserves the source image aspect ratio roughly.
-
-    The canvas area is computed in pixels (each pixel holds `channels` bytes).
-    """
-
     if len(source_shape) < 2:
         return 1, max(1, int(np.ceil(ciphertext_length / channels)))
 
@@ -196,52 +191,33 @@ def encrypt_image(
             nonce = _read_or_create_nonce(output_path, (16,), 16, "nonce")
             transformed = aes_ctr_transform(pixels, key, nonce)
         case "AES_CBC":
-            # AES-CBC: store IV in nonce file and full ciphertext in a .cbc file.
             key = derive_aes_key(key_phrase)
-
             iv = _read_or_create_nonce(output_path, (16,), 16, "IV")
-
             encrypted_bytes = aes_cbc_encrypt_bytes(flat, key, iv)
-            # Write metadata (including ciphertext length). Do not write a separate .cbc file;
-            # instead embed the full ciphertext into the saved image as an uncompressed single-channel image.
             _write_ciphertext_and_meta(
                 output_path, None, encrypted_bytes, pixels, mode, len(flat)
             )
-
-            # Create a single-channel image that contains the full ciphertext bytes.
-            # Save the ciphertext image directly as a single-channel image.
-            # Do not pass it through reconstruct_image because the original mode/shape no longer apply.
-            # Pack ciphertext across RGB channels so encrypted images look colored.
             _save_ciphertext_image(
                 output_path, encrypted_bytes, pixels.shape, channels=3
             )
             return
-
-            # nonce file will contain the IV only
-            nonce = iv
         case "TRIPLE_DES":
             key = derive_des_key(key_phrase)
             nonce = _read_or_create_nonce(output_path, (8,), 8, "nonce")
             transformed = des_ctr_transform(pixels, key, nonce)
         case "CHACHA20":
-            # ChaCha20 stream cipher (no auth). Embed ciphertext in the output image.
             key = derive_aes_key(key_phrase)
-
             nonce = _read_or_create_nonce(output_path, (16,), 16, "nonce")
-
             encrypted_bytes = chacha20_encrypt_bytes(flat, key, nonce)
-
             _write_ciphertext_and_meta(
                 output_path, None, encrypted_bytes, pixels, mode, len(flat)
             )
-
             _delete_legacy_ciphertext_sidecars(output_path, (".chacha",))
             _save_ciphertext_image(
                 output_path, encrypted_bytes, pixels.shape, channels=3
             )
             return
         case "LOGISTIC_MAP":
-            # Logistic map chaotic encryption uses the key phrase directly.
             flat_pixels = pixels.flatten().tolist()
             transformed_list = apply_logistic_map_encrypt(flat_pixels, key_phrase)
             transformed = np.array(transformed_list, dtype=np.uint8).reshape(
@@ -279,7 +255,6 @@ def decrypt_image(
     key_phrase: str,
     algorithm: str = "AES_CTR",
 ) -> None:
-
     nonce_path = _nonce_path_for_image_path(input_path)
 
     pixels, mode = extract_pixels(input_path)
@@ -314,7 +289,6 @@ def decrypt_image(
                 if shape:
                     target_shape = shape
             except FileNotFoundError:
-                # Load ciphertext length from metadata and read pixels from the image file.
                 ciphertext_length = int(meta.get("ciphertext_length", 0))
 
                 enc_pixels, enc_mode = extract_pixels(input_path)

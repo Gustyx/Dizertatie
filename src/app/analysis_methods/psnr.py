@@ -17,11 +17,6 @@ def _mse_uint8(first, second):
 
 
 def mean_squared_error(first_image, second_image):
-    """Compute MSE between two images.
-
-    For RGB inputs, returns per-channel MSE and overall MSE.
-    For grayscale inputs, returns grayscale MSE.
-    """
     img_a = load_rgb_image(first_image)
     img_b = load_rgb_image(second_image)
 
@@ -47,11 +42,6 @@ def mean_squared_error(first_image, second_image):
 
 
 def peak_signal_to_noise_ratio(first_image, second_image):
-    """Compute PSNR between two images.
-
-    For RGB inputs, returns per-channel PSNR and overall PSNR.
-    For grayscale inputs, returns grayscale PSNR.
-    """
     img_a = load_rgb_image(first_image)
     img_b = load_rgb_image(second_image)
 

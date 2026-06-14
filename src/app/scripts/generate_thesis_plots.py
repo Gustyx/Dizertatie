@@ -1,36 +1,14 @@
-"""generate_thesis_plots.py
-
-Generates all thesis figures. Each image-based figure uses a different
-dataset category so the thesis showcases a variety of visual content.
-
-  Figure  │ Category used            │ Rationale
-  ────────┼──────────────────────────┼────────────────────────────────────────
-  Fig 1   │ (bar chart – no image)   │ per-category entropy from avg JSONs
-  Fig 2   │ (bar chart – no image)   │ full-avg correlation values
-  Fig 3   │ portrait_1               │ skin-tone peaks give dramatic before/after
-  Fig 4   │ street_view_1            │ urban scene, visually interesting RGB
-  Fig 5   │ architectural_plan_1     │ peaked plain histogram; Logistic/Henon fail
-  Fig 6   │ medical_scan_1           │ very high plain correlation (great scatter)
-  Fig 8   │ street_view_1            │ matches encrypted grid for consistency
-  Fig 9   │ architectural_plan_1     │ Henon failure is most extreme here
-  Fig 10  │ portrait_1               │ consistent with Fig 3; portrait depth
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 from PIL import Image
 
-# ── Output folder ─────────────────────────────────────────────────────────────
 FIGURES_DIR = Path(__file__).parent / 'thesis_figures'
 FIGURES_DIR.mkdir(exist_ok=True)
-
-# ── Base paths ────────────────────────────────────────────────────────────────
 IMAGES_BASE = Path(__file__).parents[1] / 'shared' / 'images'
 
 
 def _resolve(folder, stem):
-    """Return path for stem, trying .png then .tiff."""
     for ext in ('.png', '.tiff', '.tif'):
         p = folder / (stem + ext)
         if p.exists():
@@ -39,31 +17,26 @@ def _resolve(folder, stem):
 
 
 def _plain(cat, stem):
-    """Load a plain image from the given category (auto-detects extension)."""
     path = _resolve(IMAGES_BASE / cat / 'plain', stem)
     return np.asarray(Image.open(path).convert('RGB'), dtype=np.uint8)
 
 
 def _enc(cat, alg_key, stem):
-    """Load encrypted image (auto-detects extension)."""
     path = _resolve(IMAGES_BASE / cat / 'encrypted', f'{alg_key}_enc_{stem}')
     return np.asarray(Image.open(path).convert('RGB'), dtype=np.uint8)
 
 
 def _enc_1bit(cat, alg_key, stem):
-    """Load 1-bit-modified encrypted image (auto-detects extension)."""
     path = _resolve(IMAGES_BASE / cat / 'encrypted_plus_one_bit',
                     f'{alg_key}_enc_{stem}')
     return np.asarray(Image.open(path).convert('RGB'), dtype=np.uint8)
 
 
-# Algorithm keys and display labels (consistent order everywhere)
 ALG_KEYS   = ['aes_ctr', 'aes_cbc', 'triple_des', 'chacha20',
                'logistic_map', 'henon_map']
 ALG_LABELS = ['AES-CTR', 'AES-CBC', '3DES', 'ChaCha20',
               'Logistic Map', 'Henon Map']
 
-# Colour palette — one colour per algorithm (same order)
 COLORS = ['#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#F44336', '#795548']
 
 n_algs = len(ALG_KEYS)
@@ -157,7 +130,6 @@ ax2.grid(axis='y', linestyle=':', alpha=0.5)
 ax2.spines['top'].set_visible(False)
 ax2.spines['right'].set_visible(False)
 
-# Annotate Henon bars that exceed the axis with their actual value
 for i, (alg, values) in enumerate(corr_data.items()):
     if alg == 'Henon Map':
         for j, v in enumerate(values):
@@ -203,7 +175,6 @@ plt.savefig(FIGURES_DIR / 'hist_comparison.png', dpi=300, bbox_inches='tight')
 print(f'Saved hist_comparison -> {FIGURES_DIR}')
 plt.close()
 
-# Re-load street view for later figures that need it
 plain_street = _plain('street_view', 'street_view_1')
 
 # =============================================================================
@@ -261,7 +232,6 @@ rng = np.random.default_rng(42)
 
 
 def scatter_pairs(img_channel, direction, n=N_SAMPLES):
-    """Return (x, y) arrays of n sampled adjacent-pixel pairs."""
     h, w = img_channel.shape
     if direction == 'H':
         xs = rng.integers(0, w - 1, n)
@@ -284,12 +254,12 @@ enc_spatial_henon = _enc('spatial', 'henon_map',  'spatial_1')
 dirs       = ['H', 'V', 'D']
 dir_labels = ['Horizontal', 'Vertical', 'Diagonal']
 
-BG_COLOR = '#1a1a2e'   # dark navy background for all scatter subplots
+BG_COLOR = '#1a1a2e'
 
 row_configs = [
-    (plain_spatial,     'Original',   '#00E5FF'),  # vivid cyan
-    (enc_spatial_ctr,   'AES-CTR',    '#69FF47'),  # vivid lime green
-    (enc_spatial_henon, 'Henon Map',  '#FF6D00'),  # vivid deep orange
+    (plain_spatial,     'Original',   '#00E5FF'),
+    (enc_spatial_ctr,   'AES-CTR',    '#69FF47'),
+    (enc_spatial_henon, 'Henon Map',  '#FF6D00'),
 ]
 
 fig6, axes6 = plt.subplots(3, 3, figsize=(12, 10), facecolor=BG_COLOR)
@@ -321,7 +291,6 @@ plt.close()
 
 
 def bit_planes(img_channel):
-    """Return list of 8 bit-plane images (bit 7 = MSB first)."""
     return [((img_channel >> b) & 1).astype(np.uint8) * 255
             for b in range(7, -1, -1)]
 

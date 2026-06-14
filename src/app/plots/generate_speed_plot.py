@@ -24,7 +24,6 @@ def render_speed_plot(
     encryption_times: dict[str, float],
     output_path: Path,
 ) -> None:
-    """Horizontal bar chart of encryption time per algorithm."""
     items = [(alg, t) for alg, t in encryption_times.items() if t > 0]
     if not items:
         return

@@ -11,30 +11,12 @@ from ..utils import load_rgb_image
 MAX_ANALYSIS_SIZE = (2048, 2048)
 
 
-def _downsample_array(img: np.ndarray) -> np.ndarray:
-    if img.ndim == 2 and max(img.shape) > MAX_ANALYSIS_SIZE[0]:
-        preview = Image.fromarray(img)
-        preview.thumbnail(MAX_ANALYSIS_SIZE)
-        return np.asarray(preview, dtype=np.uint8)
-
-    if img.ndim == 3 and max(img.shape[:2]) > MAX_ANALYSIS_SIZE[0]:
-        preview = Image.fromarray(img[..., :3].astype(np.uint8))
-        preview.thumbnail(MAX_ANALYSIS_SIZE)
-        return np.asarray(preview, dtype=np.uint8)
-
-    return img
-
-
 def _channel_histogram(values: np.ndarray) -> np.ndarray:
     flat = np.asarray(values, dtype=np.uint8).ravel()
     return np.bincount(flat, minlength=256).astype(np.int64)
 
 
 def _chi_square_uniform(histogram: np.ndarray) -> dict:
-    """Compute chi-square statistic comparing histogram to uniform distribution.
-
-    Returns dict with keys: chi2, dof, p (p may be None if scipy not available).
-    """
     total = int(histogram.sum())
     dof = 256 - 1
     if total == 0:
@@ -102,11 +84,6 @@ def _overall_histogram_summary(per_channel: dict[str, dict]) -> dict:
 
 
 def image_histogram(image):
-    """Compute 256-bin histograms for image channels.
-
-    Returns a dict with per-channel RGB histograms for color images and an
-    overall histogram summary computed as the mean of the R, G and B summaries.
-    """
     img = load_rgb_image(image)
 
     if img.ndim == 2:
